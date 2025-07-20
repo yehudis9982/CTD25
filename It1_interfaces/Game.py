@@ -12,7 +12,7 @@ from img     import Img
 class InvalidBoard(Exception): ...
 # ────────────────────────────────────────────────────────────────────
 class Game:
-    def __init__(self, pieces: List[Piece], board: Board, bus: EventBus | None = None):
+    def __init__(self, pieces: List[Piece], board: Board):
         """Initialize the game with pieces, board, and optional event bus."""
         pass
 
@@ -35,9 +35,7 @@ class Game:
     # ─── main public entrypoint ──────────────────────────────────────────────
     def run(self):
         """Main game loop."""
-        passself.start_user_input_thread()
-        if self.bus:
-            self.bus.publish(Event("game.start"))
+        self.start_user_input_thread() # QWe2e5
 
         start_ms = self.game_time_ms()
         for p in self.pieces:
@@ -45,14 +43,14 @@ class Game:
 
         # ─────── main loop ──────────────────────────────────────────────────
         while not self._is_win():
-            now = self.game_time_ms()
+            now = self.game_time_ms() # monotonic time ! not computer time.
 
             # (1) update physics & animations
             for p in self.pieces:
                 p.update(now)
 
             # (2) handle queued Commands from mouse thread
-            while not self.user_input_queue.empty():
+            while not self.user_input_queue.empty(): # QWe2e5
                 cmd: Command = self.user_input_queue.get()
                 self._process_input(cmd)
 
@@ -82,10 +80,6 @@ class Game:
         pass
 
     # ─── board validation & win detection ───────────────────────────────────
-    def _validate(self, pieces: List[Piece]) -> bool:
-        """Validate the board setup."""
-        pass
-
     def _is_win(self) -> bool:
         """Check if the game has ended."""
         pass
