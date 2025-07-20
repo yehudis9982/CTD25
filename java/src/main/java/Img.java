@@ -1,116 +1,106 @@
-import org.bytedeco.javacpp.Loader;
-import org.bytedeco.opencv.global.opencv_core;
-import org.bytedeco.opencv.global.opencv_highgui;
-import org.bytedeco.opencv.global.opencv_imgcodecs;
-import org.bytedeco.opencv.global.opencv_imgproc;
-import org.bytedeco.opencv.opencv_core.*;
 
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.awt.geom.AffineTransform;
+import java.awt.image.AffineTransformOp;
+import java.io.File;
+import java.io.IOException;
+
+/**
+ * Lightweight image‑utility class using only standard JDK APIs.
+ */
 public class Img {
 
-    static { Loader.load(opencv_core.class); }
+    private BufferedImage img;
 
-    private Mat img = new Mat();
-
-    /* ---------- loading & resize ---------- */
+    /* ----------- load & optional resize ----------- */
     public Img read(String path,
-                    Size size,
+                    Dimension targetSize,
                     boolean keepAspect,
-                    int interpolation) {
+                    Object interpolation /*ignored*/) {
 
-        img = opencv_imgcodecs.imread(path,
-                                      opencv_imgcodecs.IMREAD_UNCHANGED);
-        if (img.empty())
+        try {
+            img = ImageIO.read(new File(path));                              // :contentReference[oaicite:0]{index=0}
+        } catch (IOException e) {
             throw new IllegalArgumentException("Cannot load image: " + path);
+        }
+        if (img == null) throw new IllegalArgumentException("Unsupported image: " + path);
 
-        if (size != null) {
-            int w = img.cols(), h = img.rows();
-            int targetW = (int) size.width();
-            int targetH = (int) size.height();
+        if (targetSize != null) {
+            int tw = targetSize.width, th = targetSize.height;
+            int w = img.getWidth(), h = img.getHeight();
 
-            int newW, newH;
-            if (keepAspect) {                              // keep long side inside target box
-                double s = Math.min(targetW / (double) w,
-                                     targetH / (double) h);    // :contentReference[oaicite:4]{index=4}
-                newW = (int) Math.round(w * s);
-                newH = (int) Math.round(h * s);
-            } else {
-                newW = targetW;  newH = targetH;
-            }
-            opencv_imgproc.resize(img, img,
-                                  new Size(newW, newH),
-                                  0, 0, interpolation);
+            int nw, nh;
+            if (keepAspect) {                                                // :contentReference[oaicite:1]{index=1}
+                double s = Math.min(tw / (double) w, th / (double) h);
+                nw = (int) Math.round(w * s);
+                nh = (int) Math.round(h * s);
+            } else { nw = tw; nh = th; }
+
+            BufferedImage dst = new BufferedImage(
+                    nw, nh,
+                    img.getColorModel().hasAlpha()
+                            ? BufferedImage.TYPE_INT_ARGB
+                            : BufferedImage.TYPE_INT_RGB);
+
+            Graphics2D g = dst.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                               RenderingHints.VALUE_INTERPOLATION_BILINEAR);   // :contentReference[oaicite:2]{index=2}
+            g.drawImage(img, 0, 0, nw, nh, null);
+            g.dispose();
+            img = dst;
         }
         return this;
     }
 
-    public Img read(String path) {
-        return read(path, null, false, opencv_imgproc.INTER_AREA);
-    }
+    public Img read(String path) { return read(path, null, false, null); }
 
-    /* ---------- compositing ---------- */
+    /* ----------- draw this image onto another ----------- */
     public void drawOn(Img other, int x, int y) {
-
-        if (img.empty() || other.img.empty())
+        if (img == null || other.img == null)
             throw new IllegalStateException("Both images must be loaded.");
 
-        /* 1. ensure same channel count ------------------------------------- */
-        if (img.channels() != other.img.channels()) {
-            if (img.channels() == 3 && other.img.channels() == 4)
-                opencv_imgproc.cvtColor(img, img,
-                                        opencv_imgproc.COLOR_BGR2BGRA);   // :contentReference[oaicite:5]{index=5}
-            else if (img.channels() == 4 && other.img.channels() == 3)
-                opencv_imgproc.cvtColor(img, img,
-                                        opencv_imgproc.COLOR_BGRA2BGR);
-        }
+        if (x + img.getWidth()  > other.img.getWidth()
+         || y + img.getHeight() > other.img.getHeight())
+            throw new IllegalArgumentException("Patch exceeds destination bounds.");
 
-        int w = img.cols(), h = img.rows();
-        int W = other.img.cols(), H = other.img.rows();
-        if (x + w > W || y + h > H)
-            throw new IllegalArgumentException("Patch exceeds target bounds.");
-
-        /* 2. get ROI ------------------------------------------------------- */
-        Mat roi = other.img.apply(new Rect(x, y, w, h));
-
-        /* 3. alpha‑aware copy --------------------------------------------- */
-        if (img.channels() == 4) {
-            // split BGRA, grab A as mask
-            MatVector bgra = new MatVector();
-            opencv_core.split(img, bgra);                       // MatVector! :contentReference[oaicite:6]{index=6}
-            Mat alpha = bgra.get(3);
-
-            // convert BGRA→BGR then copy with mask (fast path)   :contentReference[oaicite:7]{index=7}
-            Mat bgr = new Mat();
-            opencv_imgproc.cvtColor(img, bgr,
-                                    opencv_imgproc.COLOR_BGRA2BGR);
-            bgr.copyTo(roi, alpha);                             // copyTo(dst, mask)
-        } else {
-            img.copyTo(roi);
-        }
+        Graphics2D g = other.img.createGraphics();
+        g.setComposite(AlphaComposite.SrcOver);                               // handles alpha channel :contentReference[oaicite:3]{index=3}
+        g.drawImage(img, x, y, null);                                        // :contentReference[oaicite:4]{index=4}
+        g.dispose();
     }
 
-    /* ---------- text ---------- */
-    public void putText(String txt,
-                        int x, int y,
-                        double fontSize,
-                        Scalar color,
-                        int thickness) {
+    /* ----------- annotate with text ----------- */
+    public void putText(String txt, int x, int y, float fontSize,
+                        Color color, int thickness /*unused in Java2D*/) {
 
-        opencv_imgproc.putText(
-                img, txt, new Point(x, y),
-                opencv_imgproc.FONT_HERSHEY_SIMPLEX,
-                fontSize, color, thickness,
-                opencv_imgproc.LINE_AA,
-                false);                                   // bottomLeftOrigin  :contentReference[oaicite:8]{index=8}
+        if (img == null) throw new IllegalStateException("Image not loaded.");
+
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                           RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setColor(color);
+        g.setFont(img.getGraphics().getFont().deriveFont(fontSize * 12));     // simple scale
+        g.drawString(txt, x, y);                                             // :contentReference[oaicite:5]{index=5}
+        g.dispose();
     }
 
-    /* ---------- display ---------- */
+    /* ----------- display in a Swing window ----------- */
     public void show() {
-        if (img.empty()) throw new IllegalStateException("Image not loaded.");
-        opencv_highgui.imshow("Image", img);
-        opencv_highgui.waitKey(0);
-        opencv_highgui.destroyAllWindows();
+        if (img == null) throw new IllegalStateException("Image not loaded.");
+
+        SwingUtilities.invokeLater(() -> {
+            JFrame f = new JFrame("Image");
+            f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            f.add(new JLabel(new ImageIcon(img)));                            // :contentReference[oaicite:6]{index=6}
+            f.pack();
+            f.setLocationRelativeTo(null);
+            f.setVisible(true);
+        });
     }
 
-    /* ---------- util ---------- */
-    public Mat mat() { return img; }
+    /* ----------- access (optional) ----------- */
+    public BufferedImage get() { return img; }
 }

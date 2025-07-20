@@ -1,25 +1,20 @@
-import org.bytedeco.opencv.global.opencv_imgproc;
-import org.bytedeco.opencv.opencv_core.Scalar;
-import org.bytedeco.opencv.opencv_core.Size;
+
+import java.awt.*;
 
 public class Example {
+    public static void main(String[] args) throws Exception {
 
-    public static void main(String[] args) {
+        String bg   = "../board.png";   // put any image path here
+        String logo = "../pieces/QW/states/jump/sprites/2.png";         // PNG with transparency
 
-        // Adjust these paths to any test pictures you have
-        String background = "C:\\Users\\Yehudit\\Downloads\\code\\SimpleImg\\board.png";
-        String logo       = "C:\\Users\\Yehudit\\Downloads\\code\\SimpleImg\\pieces\\QW\\states\\jump\\sprites\\2.png";
+        Img canvas = new Img().read(bg);                                          // keep full size
+        Img badge  = new Img().read(logo,
+                                    new Dimension(200, 200), true, null);        // shrink
 
-        Img canvas = new Img().read(background);                       // original size
-        Img piece  = new Img().read(logo,
-                                    new Size(100, 1010),  // resize to 100×100
-                                    true,                // keep aspect
-                                    opencv_imgproc.INTER_AREA);
+        badge.putText("Demo", 10, 30, 1.2f,
+                      new Color(255, 60, 60, 255), 0);
 
-        piece.putText("Demo", 10, 30, 1.0,
-                      new Scalar(255, 0, 0, 255), 2);                  // blue text
-
-        piece.drawOn(canvas, 50, 50);                                  // blend top‑left
+        badge.drawOn(canvas, 40, 40);
         canvas.show();
     }
 }
