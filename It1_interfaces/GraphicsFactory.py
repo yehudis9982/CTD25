@@ -9,4 +9,5 @@ class GraphicsFactory:
              cfg: dict,
              cell_size: tuple[int, int]) -> Graphics:
         """Load graphics from sprites directory with configuration."""
-        pass 
+        pass
+    
