@@ -2,8 +2,9 @@
 import pathlib
 from typing import List, Tuple
 
+
 class Moves:
-   
+
     def __init__(self, txt_path: pathlib.Path, dims: Tuple[int, int]):
         """Initialize moves with rules from text file and board dimensions."""
         pass

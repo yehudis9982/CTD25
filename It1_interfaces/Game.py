@@ -3,7 +3,6 @@ import pathlib
 import queue, threading, time, cv2, math
 from typing import List, Dict, Tuple, Optional
 from Board   import Board
-from Bus.bus import EventBus, Event
 from Command import Command
 from Piece   import Piece
 from img     import Img
@@ -14,6 +13,7 @@ class InvalidBoard(Exception): ...
 class Game:
     def __init__(self, pieces: List[Piece], board: Board):
         """Initialize the game with pieces, board, and optional event bus."""
+        self.pieces = { p.piece_id : p for p in pieces}
         pass
 
     # ─── helpers ─────────────────────────────────────────────────────────────
@@ -66,6 +66,9 @@ class Game:
         cv2.destroyAllWindows()
 
     # ─── drawing helpers ────────────────────────────────────────────────────
+    def _process_input(self, cmd : Command):
+        self.pieces[cmd.piece_id].on_command(cmd)
+
     def _draw(self):
         """Draw the current game state."""
         pass
