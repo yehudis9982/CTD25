@@ -37,7 +37,12 @@ class Img:
         path = str(path)
         self.img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if self.img is None:
-            raise FileNotFoundError(f"Cannot load image: {path}")
+            print(f"Warning: failed to load image {path}")
+            return self
+
+        # הוסף קטע זה: אם זו תמונת חייל, הקטן לגודל תא הלוח (למשל 80x80)
+        if "sprites" in path and size is None:
+            size = (80, 80)  # או קח מהגדרת הלוח
 
         if size is not None:
             target_w, target_h = size
@@ -51,17 +56,27 @@ class Img:
 
             self.img = cv2.resize(self.img, (new_w, new_h), interpolation=interpolation)
 
+        if self.img.shape[2] == 3:
+            self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2BGRA)
+
         return self
 
     def draw_on(self, other_img, x, y):
-        if self.img is None or other_img.img is None:
-            raise ValueError("Both images must be loaded before drawing.")
-
+        if self.img is None:
+            print("self.img is None")
+            return
+        if other_img.img is None:
+            print("other_img.img is None")
+            return
+        if not hasattr(self.img, "shape"):
+            print("self.img has no shape")
+            return
+        if not hasattr(other_img.img, "shape"):
+            print("other_img.img has no shape")
+            return
         if self.img.shape[2] != other_img.img.shape[2]:
-            if self.img.shape[2] == 3 and other_img.img.shape[2] == 4:
-                self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2BGRA)
-            elif self.img.shape[2] == 4 and other_img.img.shape[2] == 3:
-                self.img = cv2.cvtColor(self.img, cv2.COLOR_BGRA2BGR)
+            print("Shape mismatch:", self.img.shape, other_img.img.shape)
+            return
 
         h, w = self.img.shape[:2]
         H, W = other_img.img.shape[:2]
