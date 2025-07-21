@@ -7,28 +7,24 @@ class MockImg(Img):
     txt_traj : list[tuple[tuple[int,int],str]] = []
 
     def __init__(self):                     # override, no cv2 needed
-        """Initialize mock image with mock pixels."""
-        pass
+        self.img = "MOCK-PIXELS"
 
     # keep the method names identical to Img -------------------------
     def read(self, path, *_, **__):
-        """Mock read method that pretends to load an image."""
-        pass
+        # pretend size = (W,H) comes from file name for debug
+        self.W = self.H = 1
+        return self                        # chain-call compatible
 
     def draw_on(self, other, x, y):
-        """Record draw operation position."""
-        pass
+        MockImg.traj.append((x, y))
 
     def put_text(self, txt, x, y, font_size, *_, **__):
-        """Record text placement operation."""
-        pass
+        MockImg.txt_traj.append(((x, y), txt))
 
-    def show(self): 
-        """Do nothing for show operation."""
-        pass
+    def show(self): pass                   # do nothing
 
     # helper for tests
     @classmethod
     def reset(cls):
-        """Reset the recorded trajectories."""
-        pass 
+        cls.traj.clear()
+        cls.txt_traj.clear()

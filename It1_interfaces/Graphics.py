@@ -4,13 +4,13 @@ from typing import List, Dict, Tuple, Optional
 import copy
 from img import Img
 from Command import Command
-
+from Board import Board
 
 
 class Graphics:
     def __init__(self,
                  sprites_folder: pathlib.Path,
-                 cell_size: tuple[int, int],        # NEW
+                 board: Board,
                  loop: bool = True,
                  fps: float = 6.0):
         """Initialize graphics with sprites folder, cell size, loop setting, and FPS."""
@@ -30,4 +30,4 @@ class Graphics:
 
     def get_img(self) -> Img:
         """Get the current frame image."""
-        pass 
+        pass
