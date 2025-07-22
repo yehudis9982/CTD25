@@ -1,6 +1,6 @@
 import pathlib
-from CTD25.It1_interfaces.Graphics import Graphics
-from CTD25.It1_interfaces.Board import Board
+from Graphics import Graphics
+from Board import Board
 
 
 class GraphicsFactory:

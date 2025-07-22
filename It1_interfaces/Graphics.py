@@ -1,9 +1,9 @@
 import pathlib
 from typing import List, Dict, Optional
 import copy
-from CTD25.It1_interfaces.img import Img
-from CTD25.It1_interfaces.Command import Command
-from CTD25.It1_interfaces.Board import Board
+from img import Img
+from Command import Command
+from Board import Board
 
 
 class Graphics:
@@ -21,6 +21,10 @@ class Graphics:
         self.loop = loop
         self.fps = fps
         self.frame_time_ms = int(1000 / fps)
+        
+        # שמור את תיקיית המצבים לשינוי sprites
+        self.piece_states_dir = sprites_folder.parent.parent  # מ-idle/sprites ל-states
+        
         self.frames: List[Img] = self._load_frames()
         self.current_frame = 0
         self.last_update = 0
@@ -47,6 +51,32 @@ class Graphics:
         self.current_frame = 0
         self.last_update = 0
         self.running = True
+        
+        # אם יש פקודה עם state, החלף sprites בהתאם
+        if cmd and hasattr(cmd, 'params') and cmd.params and 'target_state' in cmd.params:
+            state_name = cmd.params['target_state']
+            self._switch_sprites_for_state(state_name)
+
+    def _switch_sprites_for_state(self, state_name: str):
+        """החלף sprites לפי שם המצב"""
+        folder_map = {
+            "idle": "idle",
+            "move": "move", 
+            "jump": "jump",
+            "rest_short": "short_rest",
+            "rest_long": "long_rest"
+        }
+        
+        folder_name = folder_map.get(state_name, "idle")
+        new_sprites_dir = self.piece_states_dir / folder_name / "sprites"
+        
+        if new_sprites_dir.exists():
+            self.sprites_folder = new_sprites_dir
+            self.frames = self._load_frames()
+            self.current_frame = 0
+            print(f"🎨 Graphics החליף למצב {state_name} - {len(self.frames)} פריימים")
+        else:
+            print(f"⚠️ תיקיית sprites לא נמצאה למצב {state_name}: {new_sprites_dir}")
 
     def update(self, now_ms: int):
         """Advance animation frame based on game-loop time, not wall time."""

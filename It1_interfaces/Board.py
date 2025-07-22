@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from CTD25.It1_interfaces.img import Img  # ייבוא מוחלט במקום יחסי
+from img import Img  # ייבוא מוחלט במקום יחסי
 
 @dataclass
 class Board:
@@ -27,9 +27,10 @@ class Board:
 
     def cell_to_pixel(self, cell: tuple[int, int]) -> tuple[int, int]:
         """
-        ממיר מיקום תא (שורה, עמודה) למיקום בפיקסלים על המסך.
+        ממיר מיקום תא (עמודה, שורה) למיקום בפיקסלים על המסך.
+        cell = (x, y) כשמערכת הקואורדינטות היא (עמודה, שורה)
         """
-        row, col = cell
-        x = int(col * self.cell_W_pix)
-        y = int(row * self.cell_H_pix)
-        return x, y
+        x, y = cell  # x=עמודה, y=שורה
+        pixel_x = int(x * self.cell_W_pix)
+        pixel_y = int(y * self.cell_H_pix)
+        return pixel_x, pixel_y

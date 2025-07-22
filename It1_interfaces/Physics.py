@@ -1,6 +1,6 @@
 from typing import Tuple, Optional
-from CTD25.It1_interfaces.Command import Command
-from CTD25.It1_interfaces.Board import Board
+from Command import Command
+from Board import Board
 
 
 class Physics:
@@ -8,9 +8,10 @@ class Physics:
     בסיס לפיזיקה של כלי: מיקום, מהירות, האם אפשר לתפוס/להיתפס, עדכון מצב.
     """
 
-    def __init__(self, start_cell: Tuple[int, int], board: Board, speed_m_s: float = 1.0):
+    def __init__(self, start_cell: Tuple[int, int], board: Board, speed_m_s: float = 1.0, piece_id: str = None):
         self.board = board
         self.cell = start_cell
+        self.start_cell = start_cell  # המיקום ההתחלתי לאינטרפולציה
         self.speed = speed_m_s
         self.pixel_pos = self.board.cell_to_pixel(start_cell)
         self._can_capture = True
@@ -20,26 +21,42 @@ class Physics:
         self.start_time = 0
         self.end_time = 0
         self.mode = "idle"  # מצב פיזי נוכחי: idle/move/jump
+        self.piece_id = piece_id  # שמירת ה-ID של הכלי
 
     def reset(self, cmd: Command):
         """
         אתחול פיזיקה לפי פקודה חדשה (למשל התחלת תנועה, קפיצה, עמידה).
         """
+        # print(f"🔧 Physics.reset: קיבל פקודה {cmd.type} מ-{self.cell} ל-{getattr(cmd, 'target', 'N/A')}")
         self.mode = cmd.type
         if cmd.type == "move":
+            self.start_cell = self.cell  # שמירת המיקום ההתחלתי לאינטרפולציה
             self.target_cell = cmd.target
             self.moving = True
             self.start_time = getattr(cmd, "time_ms", getattr(cmd, "timestamp", 0))
+            
+            # מהירות תנועה - נוודא שתמיד יש מהירות חיובית
+            move_speed = 2.0  # תאים לשנייה - מהירות תנועה מהירה יותר
             dist = self._cell_distance(self.cell, self.target_cell)
-            self.end_time = self.start_time + int(dist / self.speed * 1000)
+            # print(f"🔧 Physics: מרחק מ-{self.cell} ל-{self.target_cell} = {dist}, מהירות = {move_speed}")
+            if dist == 0:
+                print(f"⚠️ Physics: מרחק אפס! לא יהיה אנימציה")
+                self.end_time = self.start_time + 100  # 100ms מינימום
+            else:
+                self.end_time = self.start_time + int(dist / move_speed * 1000)
+            print(f"🚀 פיזיקה: התחלת תנועה מ-{self.start_cell} ל-{self.target_cell}, משך {self.end_time - self.start_time}ms")
         elif cmd.type == "jump":
-            self.target_cell = self.cell  # קפיצה במקום, לא משנה תא
+            self.target_cell = cmd.target if hasattr(cmd, 'target') and cmd.target else self.cell
+            self.cell = self.target_cell  # קפיצה מיידית למיקום החדש
+            self.pixel_pos = self.board.cell_to_pixel(self.cell)  # עדכון pixel_pos
             self.moving = False           # אין תנועה בפועל
         elif cmd.type == "idle":
             self.target_cell = self.cell
+            self.pixel_pos = self.board.cell_to_pixel(self.cell)  # וודא שpixel_pos מעודכן
             self.moving = False
         else:
             self.moving = False
+            self.pixel_pos = self.board.cell_to_pixel(self.cell)  # וודא עדכון במצבים אחרים
 
     def update(self, now_ms: int) -> Optional[Command]:
         """
@@ -47,10 +64,28 @@ class Physics:
         """
         if self.moving:
             if now_ms >= self.end_time:
+                # תנועה הסתיימה - הגיעה למיקום הסופי
                 self.cell = self.target_cell
                 self.pixel_pos = self.board.cell_to_pixel(self.cell)
                 self.moving = False
-                return Command(timestamp=now_ms, piece_id=self.cell, type="arrived", params=None)
+                print(f"🏁 פיזיקה: החתיכה ב-{self.cell} הגיעה ליעד")
+                return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
+            else:
+                # תנועה בתהליך - אינטרפולציה חלקה
+                total_duration = self.end_time - self.start_time
+                elapsed = now_ms - self.start_time
+                progress = elapsed / total_duration  # אחוז התקדמות (0.0 - 1.0)
+                
+                # חישוב מיקום ביניים
+                start_pixel = self.board.cell_to_pixel(self.start_cell)
+                target_pixel = self.board.cell_to_pixel(self.target_cell)
+                
+                # אינטרפולציה לינארית
+                x = start_pixel[0] + (target_pixel[0] - start_pixel[0]) * progress
+                y = start_pixel[1] + (target_pixel[1] - start_pixel[1]) * progress
+                
+                self.pixel_pos = (int(x), int(y))
+                print(f"🏃 פיזיקה: תנועה {progress:.2f} - מיקום ({x:.1f}, {y:.1f})")
         return None
 
     def can_be_captured(self) -> bool:

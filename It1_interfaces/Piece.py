@@ -1,6 +1,6 @@
-from CTD25.It1_interfaces.Board import Board
-from CTD25.It1_interfaces.Command import Command
-from CTD25.It1_interfaces.State import State
+from Board import Board
+from Command import Command
+from State import State
 import cv2
 
 
@@ -30,14 +30,20 @@ class Piece:
     def draw_on_board(self, board: Board, now_ms: int):
         """
         Draw the piece on the board using its graphics and physics position.
-        מניח של-state יש _graphics (עם get_img) ו-_physics (עם cell)
+        משתמש ב-pixel_pos עבור אנימציה חלקה במקום cell
         """
         graphics = getattr(self._state, "_graphics", None)
         physics = getattr(self._state, "_physics", None)
         if graphics is not None and physics is not None:
             img = graphics.get_img()
-            cell = getattr(physics, "cell", None)
-            if cell is not None:
-                x, y = board.cell_to_pixel(cell)
+            # השתמש במיקום הפיקסל החלק במקום תא
+            pixel_pos = getattr(physics, "pixel_pos", None)
+            if pixel_pos is not None:
+                x, y = pixel_pos
                 img.draw_on(board.img, x, y)
-            print(f"מצייר {self.piece_id} ב-{cell}")
+                # debug: הצג גם את מיקום התא ומיקום הפיקסל
+                cell = getattr(physics, "cell", None)
+                # if physics.moving:
+                #     print(f"🏃 מצייר {self.piece_id}: תא {cell} -> פיקסל ({x}, {y})")
+                # else:
+                #     print(f"🧘 מצייר {self.piece_id} במנוחה ב-{cell} -> פיקסל ({x}, {y})")
