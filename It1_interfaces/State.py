@@ -52,10 +52,9 @@ class State:
             if cmd is not None:
                 self._last_cmd = cmd
                 # אם זו פקודת arrived, הוסף אותה לתור של המשחק
-                if cmd.type == "arrived" and self._game_queue is not None:
-                    print(f"🔍 ARRIVED DEBUG: piece_id='{cmd.piece_id}', target={cmd.target}, params={cmd.params}")
-                    self._game_queue.put(cmd)
-                    print(f"🏁 הוספתי פקודת arrived לתור: {cmd.piece_id}")
+                if cmd.type == "arrived":
+                    if self._game_queue is not None:
+                        self._game_queue.put(cmd)
                 self._transition(cmd.type, now_ms)
         return self
 

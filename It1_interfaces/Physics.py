@@ -40,11 +40,9 @@ class Physics:
             dist = self._cell_distance(self.cell, self.target_cell)
             # print(f"🔧 Physics: מרחק מ-{self.cell} ל-{self.target_cell} = {dist}, מהירות = {move_speed}")
             if dist == 0:
-                print(f"⚠️ Physics: מרחק אפס! לא יהיה אנימציה")
                 self.end_time = self.start_time + 100  # 100ms מינימום
             else:
                 self.end_time = self.start_time + int(dist / move_speed * 1000)
-            print(f"🚀 פיזיקה: התחלת תנועה מ-{self.start_cell} ל-{self.target_cell}, משך {self.end_time - self.start_time}ms")
         elif cmd.type == "jump":
             self.target_cell = cmd.target if hasattr(cmd, 'target') and cmd.target else self.cell
             self.cell = self.target_cell  # קפיצה מיידית למיקום החדש
@@ -85,7 +83,6 @@ class Physics:
                 y = start_pixel[1] + (target_pixel[1] - start_pixel[1]) * progress
                 
                 self.pixel_pos = (int(x), int(y))
-                print(f"🏃 פיזיקה: תנועה {progress:.2f} - מיקום ({x:.1f}, {y:.1f})")
         return None
 
     def can_be_captured(self) -> bool:

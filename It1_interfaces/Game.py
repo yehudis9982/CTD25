@@ -39,7 +39,7 @@ class Game:
 
     def start_user_input_thread(self):
         """Start the user input thread for mouse handling."""
-        self.user_input_queue = queue.Queue()
+        # התור כבר נוצר בקונסטרקטור - אל תדרוס אותו!
         # אפשר להפעיל thread אמיתי בעתיד
 
     # ─── main public entrypoint ──────────────────────────────────────────────
@@ -60,9 +60,8 @@ class Game:
                 p.update(now)
 
             # (2) handle queued Commands from mouse thread
-            while not self.user_input_queue.empty(): # QWe2e5
+            while not self.user_input_queue.empty():
                 cmd: Command = self.user_input_queue.get()
-                print(f"🎯 QUEUE DEBUG: Got command from queue: type='{cmd.type}', piece_id='{cmd.piece_id}', target={cmd.target}")
                 self._process_input(cmd)
                 
                 # בדוק אם המשחק נגמר
@@ -85,6 +84,15 @@ class Game:
         if self.game_over:
             print("🎮 המשחק הסתיים עקב נצחון!")
             print("🎮 Game ended due to victory!")
+            
+            # בדוק אם יש קומנדים שלא עובדו בתור
+            remaining_count = 0
+            print(f"🔍 בודק קומנדים שנותרו בתור...")
+            while not self.user_input_queue.empty():
+                cmd = self.user_input_queue.get()
+                remaining_count += 1
+                print(f"🔍 קומנד שלא עובד: type='{cmd.type}', piece_id='{cmd.piece_id}', target={cmd.target}")
+            print(f"🔍 סה\"כ קומנדים שלא עובדו: {remaining_count}")
         else:
             print("🎮 המשחק נגמר!")
             print("🎮 Game Over!")
@@ -92,22 +100,12 @@ class Game:
 
     # ─── drawing helpers ────────────────────────────────────────────────────
     def _process_input(self, cmd : Command):
-        # חפש את הכלי לפי piece_id
-        print(f"🔧 מעבד פקודה: {cmd.type} עבור {cmd.piece_id} ל-{cmd.target}")
-        print(f"🔍 DEBUG: cmd type is '{cmd.type}', length: {len(cmd.type) if cmd.type else 'None'}")
-        print(f"🔍 DEBUG: cmd.type == 'arrived': {cmd.type == 'arrived'}")
-        print(f"🔍 DEBUG: repr(cmd.type): {repr(cmd.type)}")
-        print(f"🔍 DEBUG: cmd.type.strip() == 'arrived': {cmd.type.strip() == 'arrived' if cmd.type else False}")
-        
-        # אם זו פקודת arrived - בדוק תפיסה
-        if cmd.type == "arrived" or (cmd.type and cmd.type.strip() == "arrived"):
-            print(f"🏁 מעבד פקודת ARRIVED עבור {cmd.piece_id}")
+        if cmd.type == "arrived":
             self._handle_arrival(cmd)
             return
         
         for piece in self.pieces:
             if piece.piece_id == cmd.piece_id:
-                print(f"✅ נמצא כלי {piece.piece_id}, שולח פקודה...")
                 piece.on_command(cmd, self.game_time_ms())
                 
                 # 🏆 בדיקת תנאי נצחון אחרי כל תנועה!
@@ -136,6 +134,10 @@ class Game:
         
         # קבל את המיקום של הכלי שהגיע
         target_pos = arriving_piece._state._physics.cell
+        
+        # בדוק הכתרת חיילים לפני בדיקת תפיסה
+        self._check_pawn_promotion(arriving_piece, target_pos)
+        
         print(f"🎯 בודק תפיסה במיקום {target_pos}")
         print(f"🔍 רשימת כל הכלים והמיקומים שלהם:")
         
@@ -197,8 +199,60 @@ class Game:
         if pieces_to_remove:
             if self._is_win():
                 self._announce_win()
-                self.game_over = True
-                self.game_over = True
+                self.game_over = True  # סמן שהמשחק נגמר מיד אחרי נצחון
+
+    def _check_pawn_promotion(self, piece, target_pos):
+        """Check if a pawn should be promoted to queen."""
+        # בדוק אם זה חייל
+        if not piece.piece_id.startswith('P'):
+            return  # לא חייל - אין הכתרה
+            
+        col, row = target_pos  # target_pos הוא (x, y) = (col, row)
+        is_white_pawn = 'W' in piece.piece_id
+        is_black_pawn = 'B' in piece.piece_id
+        
+        # בדוק אם החייל הגיע לשורה המתאימה להכתרה
+        should_promote = False
+        new_piece_type = None
+        
+        if is_white_pawn and row == 0:  # חייל לבן הגיע לשורה 0
+            should_promote = True
+            new_piece_type = "QW"
+            print(f"👑 חייל לבן {piece.piece_id} הגיע לשורה 0 - הכתרה למלכה!")
+        elif is_black_pawn and row == 7:  # חייל שחור הגיע לשורה 7
+            should_promote = True
+            new_piece_type = "QB"
+            print(f"👑 חייל שחור {piece.piece_id} הגיע לשורה 7 - הכתרה למלכה!")
+            
+        if should_promote:
+            self._promote_pawn_to_queen(piece, new_piece_type, target_pos)
+
+    def _promote_pawn_to_queen(self, pawn, queen_type, position):
+        """Replace a pawn with a queen at the given position."""
+        print(f"🎆 מבצע הכתרה: {pawn.piece_id} -> {queen_type} במיקום {position}")
+        
+        # צור מלכה חדשה
+        pieces_root = pathlib.Path(r"c:\Users\01\Desktop\chess\CTD25\pieces")
+        from PieceFactory import PieceFactory
+        factory = PieceFactory(self.board, pieces_root)
+        
+        # יצירת ID ייחודי למלכה החדשה
+        existing_queens = [p for p in self.pieces if p.piece_id.startswith(queen_type)]
+        queen_id = f"{queen_type}{len(existing_queens)}"
+        
+        # צור מלכה חדשה במיקום הנדרש
+        new_queen = factory.create_piece(queen_type, position, self.user_input_queue)
+        new_queen.piece_id = queen_id
+        new_queen._state._physics.piece_id = queen_id
+        
+        # הסר את החייל הישן והוסף את המלכה החדשה
+        if pawn in self.pieces:
+            self.pieces.remove(pawn)
+            print(f"🗑️ הסרתי חייל: {pawn.piece_id}")
+            
+        self.pieces.append(new_queen)
+        print(f"👑 הוספתי מלכה חדשה: {queen_id} במיקום {position}")
+        print(f"🎉 הכתרה הושלמה בהצלחה! {pawn.piece_id} -> {queen_id}")
 
     def _draw(self):
         """Draw the current game state."""
@@ -443,7 +497,24 @@ class Game:
                     print(f"כלי קיים: {piece.piece_id}, כלי לבן: {is_white}")
                     print(f"PIECE EXISTS: {piece.piece_id}, IS WHITE: {is_white}")
         else:
-            # הזזת הכלי הנבחר
+            # בדיקה אם מנסים להזיז לאותו מיקום (אנימציית קפיצה במקום)
+            current_pos = self._get_piece_position(self.selected_piece_player1)
+            if current_pos == (x, y):
+                print(f"� שחקן 1 מבצע קפיצה במקום לכלי: {self.selected_piece_player1.piece_id}")
+                print(f"PLAYER 1 JUMP IN PLACE FOR PIECE: {self.selected_piece_player1.piece_id}")
+                # בצע אנימציית קפיצה לאותו מיקום
+                jump_cmd = Command(
+                    timestamp=self.game_time_ms(),
+                    piece_id=self.selected_piece_player1.piece_id,
+                    type="jump",
+                    target=current_pos,  # קפיצה לאותו מיקום
+                    params=None
+                )
+                self.user_input_queue.put(jump_cmd)
+                self.selected_piece_player1 = None
+                return
+            
+            # הזזת הכלי הנבחר למיקום חדש
             print(f"🎯 שחקן 1 מזיז כלי {self.selected_piece_player1.piece_id} ל-({x}, {y})")
             print(f"PLAYER 1 MOVING PIECE {self.selected_piece_player1.piece_id} TO ({x}, {y})")
             self._move_piece(self.selected_piece_player1, x, y, 1)
@@ -466,7 +537,24 @@ class Game:
                     is_black = self._is_player_piece(piece, 2)
                     print(f"כלי קיים: {piece.piece_id}, כלי שחור: {is_black}")
         else:
-            # הזזת הכלי הנבחר
+            # בדיקה אם מנסים להזיז לאותו מיקום (אנימציית קפיצה במקום)
+            current_pos = self._get_piece_position(self.selected_piece_player2)
+            if current_pos == (x, y):
+                print(f"� שחקן 2 מבצע קפיצה במקום לכלי: {self.selected_piece_player2.piece_id}")
+                print(f"PLAYER 2 JUMP IN PLACE FOR PIECE: {self.selected_piece_player2.piece_id}")
+                # בצע אנימציית קפיצה לאותו מיקום
+                jump_cmd = Command(
+                    timestamp=self.game_time_ms(),
+                    piece_id=self.selected_piece_player2.piece_id,
+                    type="jump",
+                    target=current_pos,  # קפיצה לאותו מיקום
+                    params=None
+                )
+                self.user_input_queue.put(jump_cmd)
+                self.selected_piece_player2 = None
+                return
+            
+            # הזזת הכלי הנבחר למיקום חדש
             print(f"🎯 שחקן 2 מזיז כלי {self.selected_piece_player2.piece_id} ל-({x}, {y})")
             self._move_piece(self.selected_piece_player2, x, y, 2)
             self.selected_piece_player2 = None
@@ -552,13 +640,30 @@ class Game:
 
     def _move_piece(self, piece, new_x, new_y, player_num):
         """Move piece to new position using Command system."""
-        # בדיקה שהמהלך חוקי
-        if not self._is_valid_move(piece, new_x, new_y, player_num):
-            print(f"❌ מהלך לא חוקי ל-{piece.piece_id} ל-({new_x}, {new_y})")
+        # מיקום נוכחי של הכלי
+        current_pos = self._get_piece_position(piece)
+        if not current_pos:
+            print(f"❌ לא ניתן למצוא מיקום נוכחי של {piece.piece_id}")
             return
         
-        # בדיקה אם יש כלי במיקום המטרה
-        target_piece = self._get_piece_at_position(new_x, new_y)
+        current_x, current_y = current_pos
+        
+        # בדיקת נתיב - האם יש כלים בדרך
+        blocking_position = self._check_path(current_x, current_y, new_x, new_y, piece.piece_id)
+        
+        # אם יש כלי חוסם בדרך, עדכן את מיקום היעד למיקום של הכלי החוסם
+        final_x, final_y = new_x, new_y
+        if blocking_position:
+            final_x, final_y = blocking_position
+            print(f"🎯 מעדכן יעד בגלל כלי חוסם: מ-({new_x}, {new_y}) ל-({final_x}, {final_y})")
+        
+        # בדיקה שהמהלך חוקי עם היעד המעודכן
+        if not self._is_valid_move(piece, final_x, final_y, player_num):
+            print(f"❌ מהלך לא חוקי ל-{piece.piece_id} ל-({final_x}, {final_y})")
+            return
+        
+        # בדיקה אם יש כלי במיקום המטרה הסופי
+        target_piece = self._get_piece_at_position(final_x, final_y)
         if target_piece:
             # בדוק אם זה כלי של האויב (אפשר לתפוס)
             if self._is_player_piece(target_piece, player_num):
@@ -574,21 +679,59 @@ class Game:
                     
                 # לא מוחקים את הכלי כאן - זה יקרה ב-_handle_arrival כשהכלי יגיע!
         
-        # יצירת פקודת תנועה - המערכת הקיימת תטפל בהכל!
+        # יצירת פקודת תנועה - בחירה בין move ל-jump בהתבסס על סוג הכלי
+        # סוסים (N) וכלים אחרים שקופצים ישתמשו ב-jump
+        command_type = "jump" if piece.piece_id.startswith(('N', 'K')) else "move"
+        
         move_cmd = Command(
             timestamp=self.game_time_ms(),
             piece_id=piece.piece_id,
-            type="move",
-            target=(new_x, new_y),
+            type=command_type,
+            target=(final_x, final_y),  # שימוש במיקום המעודכן
             params=None
         )
         
         # הוספת הפקודה לתור - State.process_command יטפל במכונת המצבים
         self.user_input_queue.put(move_cmd)
         
-        print(f"🎯 שחקן {player_num}: שלח פקודת תנועה ל-{piece.piece_id} ל-({new_x}, {new_y})")
-        print(f"PLAYER {player_num}: Sent move command for {piece.piece_id} to ({new_x}, {new_y})")
+        print(f"🎯 שחקן {player_num}: שלח פקודת {command_type} ל-{piece.piece_id} ל-({final_x}, {final_y})")
+        print(f"PLAYER {player_num}: Sent {command_type} command for {piece.piece_id} to ({final_x}, {final_y})")
         # ללא החלפת תור - כל שחקן יכול לזוז מתי שהוא רוצה
+
+    def _check_path(self, start_x, start_y, end_x, end_y, piece_type):
+        """Check if path is clear and return first blocking piece position if any."""
+        # סוסים יכולים לקפוץ מעל כלים
+        if piece_type.startswith('N'):  # Knight - no path checking
+            return None
+        
+        dx = end_x - start_x
+        dy = end_y - start_y
+        
+        # מלכים יכולים לזוז משבצת אחת בכל כיוון - אין צורך בבדיקת נתיב
+        if piece_type.startswith('K') and abs(dx) <= 1 and abs(dy) <= 1:
+            return None
+        
+        # חישוב כיוון התנועה
+        step_x = 0 if dx == 0 else (1 if dx > 0 else -1)
+        step_y = 0 if dy == 0 else (1 if dy > 0 else -1)
+        
+        # בדיקת נתיב - בלי לכלול את נקודות ההתחלה והסיום
+        current_x = start_x + step_x
+        current_y = start_y + step_y
+        
+        while current_x != end_x or current_y != end_y:
+            # בדיקה אם יש כלי במשבצת הנוכחית
+            blocking_piece = self._get_piece_at_position(current_x, current_y)
+            if blocking_piece:
+                print(f"🚫 נתיב חסום! כלי {blocking_piece.piece_id} במיקום ({current_x}, {current_y})")
+                return (current_x, current_y)  # מחזיר את מיקום הכלי החוסם
+            
+            # מעבר למשבצת הבאה
+            current_x += step_x
+            current_y += step_y
+        
+        print(f"✅ נתיב פנוי מ-({start_x}, {start_y}) ל-({end_x}, {end_y})")
+        return None  # נתיב פנוי
 
     def _is_valid_move(self, piece, new_x, new_y, player_num):
         """Check if move is valid based on piece type and rules."""
@@ -606,6 +749,14 @@ class Game:
         # חישוב ההפרש
         dx = new_x - current_x
         dy = new_y - current_y
+        
+        # בדיקת נתיב - האם יש כלים בדרך
+        blocking_position = self._check_path(current_x, current_y, new_x, new_y, piece.piece_id)
+        
+        # אם יש כלי חוסם בדרך ואנחנו לא מנסים לזוז למיקום שלו
+        if blocking_position and blocking_position != (new_x, new_y):
+            print(f"🚫 תנועה לא חוקית: נתיב חסום על ידי כלי במיקום {blocking_position}")
+            return False
         
         # בדיקה אם יש כלי במיקום המטרה
         target_piece = self._get_piece_at_position(new_x, new_y)
