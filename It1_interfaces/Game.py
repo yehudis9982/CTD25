@@ -640,6 +640,11 @@ class Game:
 
     def _move_piece(self, piece, new_x, new_y, player_num):
         """Move piece to new position using Command system."""
+        # בדיקה שהמהלך חוקי
+        if not self._is_valid_move(piece, new_x, new_y, player_num):
+            print(f"❌ מהלך לא חוקי ל-{piece.piece_id} ל-({new_x}, {new_y})")
+            return
+        
         # מיקום נוכחי של הכלי
         current_pos = self._get_piece_position(piece)
         if not current_pos:
@@ -648,7 +653,7 @@ class Game:
         
         current_x, current_y = current_pos
         
-        # בדיקת נתיב - האם יש כלים בדרך
+        # בדיקת נתיב - האם יש כלים בדרך (רק אחרי שהתנועה תקינה!)
         blocking_position = self._check_path(current_x, current_y, new_x, new_y, piece.piece_id)
         
         # אם יש כלי חוסם בדרך, עדכן את מיקום היעד למיקום של הכלי החוסם
@@ -656,11 +661,6 @@ class Game:
         if blocking_position:
             final_x, final_y = blocking_position
             print(f"🎯 מעדכן יעד בגלל כלי חוסם: מ-({new_x}, {new_y}) ל-({final_x}, {final_y})")
-        
-        # בדיקה שהמהלך חוקי עם היעד המעודכן
-        if not self._is_valid_move(piece, final_x, final_y, player_num):
-            print(f"❌ מהלך לא חוקי ל-{piece.piece_id} ל-({final_x}, {final_y})")
-            return
         
         # בדיקה אם יש כלי במיקום המטרה הסופי
         target_piece = self._get_piece_at_position(final_x, final_y)
@@ -679,9 +679,8 @@ class Game:
                     
                 # לא מוחקים את הכלי כאן - זה יקרה ב-_handle_arrival כשהכלי יגיע!
         
-        # יצירת פקודת תנועה - בחירה בין move ל-jump בהתבסס על סוג הכלי
-        # סוסים (N) וכלים אחרים שקופצים ישתמשו ב-jump
-        command_type = "jump" if piece.piece_id.startswith(('N', 'K')) else "move"
+        # יצירת פקודת תנועה - כל הכלים יכולים לזוז בתנועה חלקה
+        command_type = "move"
         
         move_cmd = Command(
             timestamp=self.game_time_ms(),
@@ -750,23 +749,17 @@ class Game:
         dx = new_x - current_x
         dy = new_y - current_y
         
-        # בדיקת נתיב - האם יש כלים בדרך
-        blocking_position = self._check_path(current_x, current_y, new_x, new_y, piece.piece_id)
-        
-        # אם יש כלי חוסם בדרך ואנחנו לא מנסים לזוז למיקום שלו
-        if blocking_position and blocking_position != (new_x, new_y):
-            print(f"🚫 תנועה לא חוקית: נתיב חסום על ידי כלי במיקום {blocking_position}")
-            return False
-        
         # בדיקה אם יש כלי במיקום המטרה
         target_piece = self._get_piece_at_position(new_x, new_y)
         is_capture = target_piece is not None
         
-        # קריאת הנתונים מקובץ התנועות של הכלי
+        # קריאת הנתונים מקובץ התנועות של הכלי - קודם נבדוק אם התנועה חוקית
         if hasattr(piece._state, '_moves') and hasattr(piece._state._moves, 'valid_moves'):
             valid_moves = piece._state._moves.valid_moves
             print(f"🔍 בודק תנועה: {piece.piece_id} מ-({current_x},{current_y}) ל-({new_x},{new_y}), הפרש: ({dx},{dy})")
             print(f"🔍 תנועות אפשריות: {valid_moves}")
+            
+            move_is_valid = False
             
             # בדיקה לכל תנועה אפשרית - רק קואורדינטות, בלי סוגי תנועה
             for move_dx, move_dy, move_type in valid_moves:
@@ -785,11 +778,23 @@ class Game:
                 # בדיקה אם התנועה תואמת - רק קואורדינטות!
                 if dx == actual_dx and dy == actual_dy:
                     print(f"✅ תנועה תואמת! הפרש ({dx},{dy}) = קואורדינטות ({actual_dx},{actual_dy})")
-                    print(f"✅ תנועה חוקית!")
-                    return True
+                    move_is_valid = True
+                    break
             
-            print(f"❌ לא נמצאה תנועה תואמת")
-            return False
+            if not move_is_valid:
+                print(f"❌ לא נמצאה תנועה תואמת")
+                return False
+            
+            # כעת, אחרי שאנחנו יודעים שהתנועה חוקית לפי הקבצים, נבדוק נתיב
+            blocking_position = self._check_path(current_x, current_y, new_x, new_y, piece.piece_id)
+            
+            # אם יש כלי חוסם בדרך ואנחנו לא מנסים לזוז למיקום שלו
+            if blocking_position and blocking_position != (new_x, new_y):
+                print(f"🚫 תנועה לא חוקית: נתיב חסום על ידי כלי במיקום {blocking_position}")
+                return False
+            
+            print(f"✅ תנועה חוקית!")
+            return True
         else:
             print(f"❌ אין נתוני תנועות לכלי {piece.piece_id}")
             return False

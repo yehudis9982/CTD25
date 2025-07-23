@@ -48,6 +48,9 @@ class Physics:
             self.cell = self.target_cell  # קפיצה מיידית למיקום החדש
             self.pixel_pos = self.board.cell_to_pixel(self.cell)  # עדכון pixel_pos
             self.moving = False           # אין תנועה בפועל
+            # שמירת זמן לפקודת arrived
+            self.start_time = getattr(cmd, "time_ms", getattr(cmd, "timestamp", 0))
+            self.end_time = self.start_time + 1  # יצירת arrived מיד במעדכון הבא
         elif cmd.type == "idle":
             self.target_cell = self.cell
             self.pixel_pos = self.board.cell_to_pixel(self.cell)  # וודא שpixel_pos מעודכן
@@ -83,6 +86,11 @@ class Physics:
                 y = start_pixel[1] + (target_pixel[1] - start_pixel[1]) * progress
                 
                 self.pixel_pos = (int(x), int(y))
+        elif self.mode == "jump" and now_ms >= self.end_time:
+            # קפיצה הסתיימה - צריך ליצור פקודת arrived
+            print(f"🏁 פיזיקה: החתיכה קפצה ל-{self.cell}")
+            self.mode = "idle"  # סיום הקפיצה
+            return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
         return None
 
     def can_be_captured(self) -> bool:
