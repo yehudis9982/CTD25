@@ -10,6 +10,8 @@ from Piece import Piece
 from Observer.Publisher import Publisher
 from Observer.ScoreTracker import ScoreTracker
 from Observer.PieceCaptureEvent import PieceCaptureEvent
+from Observer.MoveLogger import MoveLogger
+from Observer.MoveMadeEvent import MoveMadeEvent
 
 class InvalidBoard(Exception): ...
 # ────────────────────────────────────────────────────────────────────
@@ -29,10 +31,12 @@ class Game:
         # דגל סיום המשחק
         self.game_over = False
         
-        # Observer pattern - ניקוד
+        # Observer pattern - ניקוד ותיעוד מהלכים
         self.publisher = Publisher()
         self.score_tracker = ScoreTracker()
+        self.move_logger = MoveLogger()
         self.publisher.subscribe(self.score_tracker)
+        self.publisher.subscribe(self.move_logger)
 
     # ─── helpers ─────────────────────────────────────────────────────────────
     def game_time_ms(self) -> int:
@@ -131,6 +135,22 @@ class Game:
         
         # קבל את המיקום של הכלי שהגיע
         target_pos = arriving_piece._state._physics.cell
+        
+        # פרסם אירוע מהלך (אחרי שהמהלך הושלם)
+        piece_type = arriving_piece.piece_id[0]  # P, R, N, B, Q, K
+        player_color = "white" if 'W' in arriving_piece.piece_id else "black"
+        start_pos = cmd.params[0] if cmd.params and len(cmd.params) > 0 else "unknown"
+        end_pos = cmd.params[1] if cmd.params and len(cmd.params) > 1 else f"{target_pos}"
+        
+        from datetime import datetime
+        move_event = MoveMadeEvent(
+            piece_type=piece_type,
+            start_position=start_pos,
+            end_position=end_pos,
+            player_color=player_color,
+            timestamp=datetime.now()
+        )
+        self.publisher.notify(move_event)
         
         # בדוק הכתרת חיילים לפני בדיקת תפיסה
         self._check_pawn_promotion(arriving_piece, target_pos)
@@ -236,7 +256,16 @@ class Game:
                 'black_score': self.score_tracker.get_score("black")
             }
             
-            display_board.img.display_with_background("Chess Game", cursors_info=cursors_info, score_info=score_info)
+            # הוסף מידע מהלכים
+            moves_info = {
+                'white_moves': self.move_logger.get_moves("white"),
+                'black_moves': self.move_logger.get_moves("black")
+            }
+            
+            display_board.img.display_with_background("Chess Game", 
+                                                     cursors_info=cursors_info, 
+                                                     score_info=score_info,
+                                                     moves_info=moves_info)
 
     def _draw_cursors(self, board):
         """Draw player cursors on the board."""

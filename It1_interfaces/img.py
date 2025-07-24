@@ -114,7 +114,7 @@ class Img:
             raise ValueError("Image not loaded.")
         cv2.imshow(window_name, self.img)
 
-    def display_with_background(self, window_name="Game Window", background_scale=1.3, gradient_colors=None, auto_resize_window=True, max_window_size=None, cursors_info=None, score_info=None):
+    def display_with_background(self, window_name="Game Window", background_scale=1.3, gradient_colors=None, auto_resize_window=True, max_window_size=None, cursors_info=None, score_info=None, moves_info=None):
         """Display the image with a background gradient."""
         if self.img is None:
             raise ValueError("Image not loaded.")
@@ -198,6 +198,10 @@ class Img:
         if score_info:
             self._draw_score_on_background(background, score_info, bg_width, bg_height)
         
+        # ציור המהלכים על הרקע
+        if moves_info:
+            self._draw_moves_history(background, moves_info, bg_width, bg_height)
+        
         # הצגת הרקע עם התמונה
         cv2.imshow(window_name, background)
 
@@ -258,3 +262,47 @@ class Img:
         black_x = (bg_width - text_size[0]) // 2
         black_y = 30
         cv2.putText(background, black_text, (black_x, black_y), font, font_scale, (255, 255, 255), thickness)
+
+    def _draw_moves_history(self, background, moves_info, bg_width, bg_height):
+        """Draw moves history on the background."""
+        white_moves = moves_info.get('white_moves', [])
+        black_moves = moves_info.get('black_moves', [])
+        
+        # הגדרות פונט
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        thickness = 1
+        line_height = 20
+        
+        # כמה מהלכים להציג (המהלכים האחרונים)
+        max_moves_to_show = 8
+        
+        # תצוגת מהלכים של שחקן לבן (צד שמאל)
+        start_x_white = 20
+        start_y_white = 80
+        
+        white_title = "WHITE MOVES:"
+        cv2.putText(background, white_title, (start_x_white, start_y_white), 
+                   font, font_scale, (255, 255, 255), thickness)
+        
+        recent_white = white_moves[-max_moves_to_show:] if len(white_moves) > max_moves_to_show else white_moves
+        for i, move in enumerate(recent_white):
+            move_text = f"{len(white_moves) - len(recent_white) + i + 1}. {move['move']} ({move['time']})"
+            y_pos = start_y_white + (i + 1) * line_height
+            cv2.putText(background, move_text, (start_x_white, y_pos), 
+                       font, font_scale, (200, 200, 200), thickness)
+        
+        # תצוגת מהלכים של שחקן שחור (צד ימין)
+        start_x_black = bg_width - 300
+        start_y_black = 80
+        
+        black_title = "BLACK MOVES:"
+        cv2.putText(background, black_title, (start_x_black, start_y_black), 
+                   font, font_scale, (255, 255, 255), thickness)
+        
+        recent_black = black_moves[-max_moves_to_show:] if len(black_moves) > max_moves_to_show else black_moves
+        for i, move in enumerate(recent_black):
+            move_text = f"{len(black_moves) - len(recent_black) + i + 1}. {move['move']} ({move['time']})"
+            y_pos = start_y_black + (i + 1) * line_height
+            cv2.putText(background, move_text, (start_x_black, y_pos), 
+                       font, font_scale, (200, 200, 200), thickness)
