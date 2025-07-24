@@ -107,3 +107,154 @@ class Img:
         cv2.imshow("Image", self.img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+
+    def display(self, window_name="Game Window"):
+        """Display the image in a window without blocking the game loop."""
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+        cv2.imshow(window_name, self.img)
+
+    def display_with_background(self, window_name="Game Window", background_scale=1.3, gradient_colors=None, auto_resize_window=True, max_window_size=None, cursors_info=None, score_info=None):
+        """Display the image with a background gradient."""
+        if self.img is None:
+            raise ValueError("Image not loaded.")
+        
+        # קבל גודל התמונה הנוכחית
+        img_height, img_width = self.img.shape[:2]
+        
+        # חשב גודל הרקע
+        bg_width = int(img_width * background_scale)
+        bg_height = int(img_height * background_scale)
+        
+        # בדוק אם צריך להקטין בגלל גודל המסך
+        if max_window_size is None:
+            max_window_size = (1200, 900)  # גודל מקסימלי סביר
+        
+        max_width, max_height = max_window_size
+        if bg_width > max_width or bg_height > max_height:
+            # חשב יחס קנה מידה כדי להתאים לחלון
+            scale_w = max_width / bg_width
+            scale_h = max_height / bg_height
+            scale = min(scale_w, scale_h)
+            
+            bg_width = int(bg_width * scale)
+            bg_height = int(bg_height * scale)
+            img_width = int(img_width * scale)
+            img_height = int(img_height * scale)
+            
+            # שנה גודל התמונה המקורית
+            resized_img = cv2.resize(self.img, (img_width, img_height))
+        else:
+            resized_img = self.img
+        
+        # צבעי גרדיאנט ברירת מחדל (אפור כהה לאפור בהיר)
+        if gradient_colors is None:
+            gradient_colors = {
+                'top': [50, 50, 50],      # אפור כהה למעלה (BGR)
+                'bottom': [120, 120, 120] # אפור בהיר למטה (BGR)
+            }
+        
+        # יצירת רקע עם גרדיאנט
+        background = np.zeros((bg_height, bg_width, 3), dtype=np.uint8)
+        
+        for y in range(bg_height):
+            # חישוב אינטנסיביות לפי מיקום Y
+            ratio = y / bg_height
+            
+            # מיזוג צבעים
+            color = [
+                int(gradient_colors['top'][i] * (1 - ratio) + gradient_colors['bottom'][i] * ratio)
+                for i in range(3)
+            ]
+            
+            background[y, :] = color
+        
+        # חישוב מיקום למרכז התמונה על הרקע
+        center_x = (bg_width - img_width) // 2
+        center_y = (bg_height - img_height) // 2
+        
+        # הצבת התמונה על הרקע
+        if resized_img.shape[2] == 4:  # תמונה עם שקיפות
+            # טיפול בשקיפות
+            alpha = resized_img[:, :, 3] / 255.0
+            for c in range(3):
+                background[center_y:center_y + img_height, center_x:center_x + img_width, c] = \
+                    (1 - alpha) * background[center_y:center_y + img_height, center_x:center_x + img_width, c] + \
+                    alpha * resized_img[:, :, c]
+        else:
+            # ללא שקיפות - פשוט העתק
+            background[center_y:center_y + img_height, center_x:center_x + img_width] = resized_img
+        
+        # התאם את גודל החלון לתמונה
+        if auto_resize_window:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, bg_width, bg_height)
+        
+        # ציור הסמנים על הרקע הסופי
+        if cursors_info:
+            self._draw_cursors_on_background(background, cursors_info, center_x, center_y, img_width, img_height)
+        
+        # ציור הניקוד על הרקע
+        if score_info:
+            self._draw_score_on_background(background, score_info, bg_width, bg_height)
+        
+        # הצגת הרקע עם התמונה
+        cv2.imshow(window_name, background)
+
+    def _draw_cursors_on_background(self, background, cursors_info, board_x, board_y, board_width, board_height):
+        """Draw cursors on the final background image."""
+        # חישוב גודל משבצת
+        cell_width = board_width // 8
+        cell_height = board_height // 8
+        
+        # ציור סמן שחקן 1 (אדום זוהר) - מקשי מספרים
+        if cursors_info.get('player1_cursor'):
+            x1, y1 = cursors_info['player1_cursor']
+            top_left_1 = (board_x + x1 * cell_width, board_y + y1 * cell_height)
+            bottom_right_1 = (board_x + (x1 + 1) * cell_width - 1, board_y + (y1 + 1) * cell_height - 1)
+            cv2.rectangle(background, top_left_1, bottom_right_1, (0, 0, 255), 8)  # אדום זוהר BGR עבה מאוד
+        
+        # ציור סמן שחקן 2 (ירוק זוהר) - WASD
+        if cursors_info.get('player2_cursor'):
+            x2, y2 = cursors_info['player2_cursor']
+            top_left_2 = (board_x + x2 * cell_width, board_y + y2 * cell_height)
+            bottom_right_2 = (board_x + (x2 + 1) * cell_width - 1, board_y + (y2 + 1) * cell_height - 1)
+            cv2.rectangle(background, top_left_2, bottom_right_2, (0, 255, 0), 8)  # ירוק זוהר BGR עבה מאוד
+        
+        # סימון כלי נבחר של שחקן 1 (צהוב זוהר)
+        if cursors_info.get('player1_selected'):
+            px, py = cursors_info['player1_selected']
+            piece_top_left = (board_x + px * cell_width, board_y + py * cell_height)
+            piece_bottom_right = (board_x + (px + 1) * cell_width - 1, board_y + (py + 1) * cell_height - 1)
+            cv2.rectangle(background, piece_top_left, piece_bottom_right, (0, 255, 255), 4)  # צהוב זוהר עבה
+        
+        # סימון כלי נבחר של שחקן 2 (ורוד/מגנטה זוהר)
+        if cursors_info.get('player2_selected'):
+            px, py = cursors_info['player2_selected']
+            piece_top_left = (board_x + px * cell_width, board_y + py * cell_height)
+            piece_bottom_right = (board_x + (px + 1) * cell_width - 1, board_y + (py + 1) * cell_height - 1)
+            cv2.rectangle(background, piece_top_left, piece_bottom_right, (255, 0, 255), 4)  # ורוד/מגנטה זוהר עבה
+
+    def _draw_score_on_background(self, background, score_info, bg_width, bg_height):
+        """Draw score information on the background."""
+        white_score = score_info.get('white_score', 0)
+        black_score = score_info.get('black_score', 0)
+        
+        # פונט וגודל
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.8
+        thickness = 2
+        
+        # ניקוד שחקן 1 (לבן) - למטה
+        white_text = f"WHITE: {white_score}"
+        text_size = cv2.getTextSize(white_text, font, font_scale, thickness)[0]
+        white_x = (bg_width - text_size[0]) // 2
+        white_y = bg_height - 20
+        cv2.putText(background, white_text, (white_x, white_y), font, font_scale, (255, 255, 255), thickness)
+        
+        # ניקוד שחקן 2 (שחור) - למעלה  
+        black_text = f"BLACK: {black_score}"
+        text_size = cv2.getTextSize(black_text, font, font_scale, thickness)[0]
+        black_x = (bg_width - text_size[0]) // 2
+        black_y = 30
+        cv2.putText(background, black_text, (black_x, black_y), font, font_scale, (255, 255, 255), thickness)
