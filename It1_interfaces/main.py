@@ -65,17 +65,7 @@ for p_type, cell in start_positions:
 # עדכן את המשחק עם הכלים
 game.pieces = pieces
 
-
-display_board = board.clone()
-now = 0
-for piece in pieces:
-    piece.draw_on_board(display_board, now)
-
-
-
-cv2.imshow("Chess - מצב התחלתי", display_board.img.img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()        
+print("🎮 Starting game loop...")
 game.run()
 
 

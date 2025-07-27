@@ -9,7 +9,7 @@ class MoveLogger(Subscriber):
         if isinstance(event, MoveMadeEvent):
             move_data = {
                 "time": event.data.get("timestamp").strftime("%H:%M:%S") if event.data.get("timestamp") else "unknown",
-                "move": f"{event.data['piece_type']} from {event.data['start_position']} to {event.data['end_position']}"
+                "move": f"{event.data['piece_type']} {event.data['start_position']} -> {event.data['end_position']}"
             }
             player_color = event.data.get("player_color", "unknown")
             self.moves[player_color].append(move_data)

@@ -12,6 +12,7 @@ from Observer.ScoreTracker import ScoreTracker
 from Observer.PieceCaptureEvent import PieceCaptureEvent
 from Observer.MoveLogger import MoveLogger
 from Observer.MoveMadeEvent import MoveMadeEvent
+from Observer.WinnerTracker import WinnerTracker
 
 class InvalidBoard(Exception): ...
 # ────────────────────────────────────────────────────────────────────
@@ -30,18 +31,58 @@ class Game:
         
         # דגל סיום המשחק
         self.game_over = False
+        self.winner_announced = False  # דגל שמונע הכרזת ניצחון חוזרת
         
         # Observer pattern - ניקוד ותיעוד מהלכים
         self.publisher = Publisher()
         self.score_tracker = ScoreTracker()
         self.move_logger = MoveLogger()
+        self.winner_tracker = WinnerTracker()
         self.publisher.subscribe(self.score_tracker)
         self.publisher.subscribe(self.move_logger)
+        self.publisher.subscribe(self.winner_tracker)
 
     # ─── helpers ─────────────────────────────────────────────────────────────
     def game_time_ms(self) -> int:
         """Return the current game time in milliseconds."""
         return int(time.monotonic() * 1000)
+
+    def play_sound(self, sound_name):
+        """Play a sound file from the Sounds directory."""
+        try:
+            import pygame
+            # אתחול pygame mixer אם עוד לא נעשה
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            
+            sound_path = pathlib.Path(r"C:\Users\01\Desktop\chess\CTD25\Sounds") / f"{sound_name}.mp3"
+            
+            if sound_path.exists():
+                pygame.mixer.music.load(str(sound_path))
+                pygame.mixer.music.play()
+                
+                # חכה שהמוזיקה תתחיל להתנגן
+                while not pygame.mixer.music.get_busy():
+                    pygame.time.wait(10)
+                
+                # חכה שהמוזיקה תסתיים (רק עבור קול נצחון)
+                if sound_name == "win":
+                    while pygame.mixer.music.get_busy():
+                        pygame.time.wait(100)
+            
+        except ImportError:
+            # אם pygame לא מותקן, נסה עם winsound (Windows built-in)
+            try:
+                import winsound
+                sound_path = pathlib.Path(r"C:\Users\01\Desktop\chess\CTD25\Sounds") / f"{sound_name}.mp3"
+                if sound_path.exists():
+                    # winsound לא תומך ב-MP3, אז נשמיע צליל מערכת
+                    winsound.PlaySound("SystemDefault", winsound.SND_ALIAS)
+            except ImportError:
+                # אם גם winsound לא זמין, פשוט נדפיס הודעה
+                print(f"🔊 Playing sound: {sound_name}")
+        except Exception as e:
+            print(f"Error playing sound: {e}")
 
     def clone_board(self) -> Board:
         """
@@ -113,10 +154,12 @@ class Game:
                 piece.on_command(cmd, self.game_time_ms())
                 
                 # 🏆 בדיקת תנאי נצחון אחרי כל תנועה!
-                if self._is_win():
+                if self._is_win() and not self.winner_announced:
                     self._announce_win()
-                    self.game_over = True  # סמן שהמשחק נגמר
-                    return  # עצור את המשחק
+                    self.winner_announced = True  # מנע הכרזות נוספות
+                    # המשחק יכול להמשיך גם אחרי נצחון
+                    # self.game_over = True  # לא מפסיק את המשחק
+                    # return  # לא עוצר את המשחק
                 break
         else:
             pass
@@ -135,22 +178,6 @@ class Game:
         
         # קבל את המיקום של הכלי שהגיע
         target_pos = arriving_piece._state._physics.cell
-        
-        # פרסם אירוע מהלך (אחרי שהמהלך הושלם)
-        piece_type = arriving_piece.piece_id[0]  # P, R, N, B, Q, K
-        player_color = "white" if 'W' in arriving_piece.piece_id else "black"
-        start_pos = cmd.params[0] if cmd.params and len(cmd.params) > 0 else "unknown"
-        end_pos = cmd.params[1] if cmd.params and len(cmd.params) > 1 else f"{target_pos}"
-        
-        from datetime import datetime
-        move_event = MoveMadeEvent(
-            piece_type=piece_type,
-            start_position=start_pos,
-            end_position=end_pos,
-            player_color=player_color,
-            timestamp=datetime.now()
-        )
-        self.publisher.notify(move_event)
         
         # בדוק הכתרת חיילים לפני בדיקת תפיסה
         self._check_pawn_promotion(arriving_piece, target_pos)
@@ -178,12 +205,17 @@ class Game:
                 captured_by = "white" if 'W' in arriving_piece.piece_id else "black"
                 capture_event = PieceCaptureEvent(piece_type, captured_by)
                 self.publisher.notify(capture_event)
+                
+                # השמע קול תפיסה
+                self.play_sound("keel")
         
         # בדוק תנאי נצחון אחרי תפיסה
         if pieces_to_remove:
-            if self._is_win():
+            if self._is_win() and not self.winner_announced:
                 self._announce_win()
-                self.game_over = True  # סמן שהמשחק נגמר מיד אחרי נצחון
+                self.winner_announced = True  # מנע הכרזות נוספות
+                # המשחק יכול להמשיך גם אחרי נצחון
+                # self.game_over = True  # לא מפסיק את המשחק
 
     def _check_pawn_promotion(self, piece, target_pos):
         """Check if a pawn should be promoted to queen."""
@@ -262,6 +294,11 @@ class Game:
                 'black_moves': self.move_logger.get_moves("black")
             }
             
+            # ציור טקסט ניצחון על הלוח אם יש מנצח - לפני הצגה!
+            winner_text = self.winner_tracker.get_winner_text()
+            if winner_text:
+                self._draw_winner_text_on_board(display_board, winner_text)
+            
             display_board.img.display_with_background("Chess Game", 
                                                      cursors_info=cursors_info, 
                                                      score_info=score_info,
@@ -307,6 +344,59 @@ class Game:
                     piece_top_left = (px * cell_width, py * cell_height)
                     piece_bottom_right = ((px + 1) * cell_width - 1, (py + 1) * cell_height - 1)
                     cv2.rectangle(img, piece_top_left, piece_bottom_right, (255, 0, 255), 4)  # ורוד/מגנטה זוהר עבה
+
+    def _draw_winner_text_on_board(self, board, winner_text):
+        """Draw winner text overlay on the board."""
+        if not hasattr(board, 'img') or not hasattr(board.img, 'img'):
+            return
+            
+        img = board.img.img
+        height, width = img.shape[:2]
+        
+        # יצירת רקע שקוף למסך הניצחון
+        overlay = img.copy()
+        
+        # רקע שחור חצי שקוף למרכז הלוח
+        center_x, center_y = width // 2, height // 2
+        box_width, box_height = 600, 150
+        
+        # ציור רקע שחור לטקסט
+        cv2.rectangle(overlay, 
+                     (center_x - box_width//2, center_y - box_height//2),
+                     (center_x + box_width//2, center_y + box_height//2),
+                     (0, 0, 0), -1)
+        
+        # מיזוג הרקע החצי שקוף עם התמונה המקורית
+        alpha = 0.8  # שקיפות - ככל שהמספר גבוה יותר, כך הרקע פחות שקוף
+        cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+        
+        # הגדרות הטקסט
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 1.5
+        color = (0, 255, 255)  # צהוב זוהר
+        thickness = 3
+        
+        # חישוב מיקום הטקסט למרכז
+        text_size = cv2.getTextSize(winner_text, font, font_scale, thickness)[0]
+        text_x = center_x - text_size[0] // 2
+        text_y = center_y + text_size[1] // 2
+        
+        # ציור הטקסט עם קו חיצוני שחור לבולטות
+        cv2.putText(img, winner_text, (text_x + 2, text_y + 2), font, font_scale, (0, 0, 0), thickness + 2)
+        cv2.putText(img, winner_text, (text_x, text_y), font, font_scale, color, thickness)
+        
+        # הוספת טקסט נוסף למטה
+        sub_text = "Game continues - Press ESC to exit"
+        sub_font_scale = 0.8
+        sub_thickness = 2
+        sub_color = (255, 255, 255)  # לבן
+        
+        sub_text_size = cv2.getTextSize(sub_text, font, sub_font_scale, sub_thickness)[0]
+        sub_text_x = center_x - sub_text_size[0] // 2
+        sub_text_y = text_y + 50
+        
+        cv2.putText(img, sub_text, (sub_text_x + 1, sub_text_y + 1), font, sub_font_scale, (0, 0, 0), sub_thickness + 1)
+        cv2.putText(img, sub_text, (sub_text_x, sub_text_y), font, sub_font_scale, sub_color, sub_thickness)
 
     def _show(self) -> bool:
         """Show the current frame and handle window events."""
@@ -575,13 +665,34 @@ class Game:
         # יצירת פקודת תנועה - כל הכלים יכולים לזוז בתנועה חלקה
         command_type = "move"
         
+        # המרת קואורדינטות לפורמט שח
+        start_notation = f"{chr(ord('a') + current_x)}{8 - current_y}"
+        end_notation = f"{chr(ord('a') + final_x)}{8 - final_y}"
+        
         move_cmd = Command(
             timestamp=self.game_time_ms(),
             piece_id=piece.piece_id,
             type=command_type,
             target=(final_x, final_y),  # שימוש במיקום המעודכן
-            params=None
+            params=[start_notation, end_notation]  # מיקומי התחלה וסיום
         )
+        
+        # פרסם אירוע מהלך מיד
+        piece_type = piece.piece_id[0]  # P, R, N, B, Q, K
+        player_color = "white" if 'W' in piece.piece_id else "black"
+        
+        from datetime import datetime
+        move_event = MoveMadeEvent(
+            piece_type=piece_type,
+            start_position=start_notation,
+            end_position=end_notation,
+            player_color=player_color,
+            timestamp=datetime.now()
+        )
+        self.publisher.notify(move_event)
+        
+        # השמע קול מהלך
+        self.play_sound("move")
         
         # הוספת הפקודה לתור - State.process_command יטפל במכונת המצבים
         self.user_input_queue.put(move_cmd)
@@ -694,6 +805,10 @@ class Game:
 
     def _announce_win(self):
         """Announce the winner."""
+        
+        # השמע קול נצחון
+        self.play_sound("win")
+        
         # בדיקה מי ניצח
         white_king_alive = False
         black_king_alive = False
@@ -705,10 +820,18 @@ class Game:
                 black_king_alive = True
         
         if not white_king_alive:
+            winner_text = "PLAYER 2 (BLACK) WINS!"
+            self.winner_tracker.set_winner_text(winner_text)
             print("🏆 שחקן 2 (שחור) ניצח! המלך הלבן נהרג!")
             print("🏆 PLAYER 2 (BLACK) WINS! White King was captured!")
+            print("🎮 המשחק ממשיך...")
         elif not black_king_alive:
+            winner_text = "PLAYER 1 (WHITE) WINS!"
+            self.winner_tracker.set_winner_text(winner_text)
             print("🏆 שחקן 1 (לבן) ניצח! המלך השחור נהרג!")
             print("🏆 PLAYER 1 (WHITE) WINS! Black King was captured!")
+            print("🎮 המשחק ממשיך...")
         else:
+            winner_text = "GAME OVER!"
+            self.winner_tracker.set_winner_text(winner_text)
             print("🎮 המשחק נגמר!")

@@ -122,8 +122,8 @@ class Img:
         # קבל גודל התמונה הנוכחית
         img_height, img_width = self.img.shape[:2]
         
-        # חשב גודל הרקע
-        bg_width = int(img_width * background_scale)
+        # חשב גודל הרקע - הרחב יותר כדי לתת מקום לטבלת המהלכים
+        bg_width = int(img_width * background_scale) + 400  # הוסף 400 פיקסלים רוחב נוסף
         bg_height = int(img_height * background_scale)
         
         # בדוק אם צריך להקטין בגלל גודל המסך
@@ -200,7 +200,7 @@ class Img:
         
         # ציור המהלכים על הרקע
         if moves_info:
-            self._draw_moves_history(background, moves_info, bg_width, bg_height)
+            self._draw_moves_history(background, moves_info, bg_width, bg_height, img_width)
         
         # הצגת הרקע עם התמונה
         cv2.imshow(window_name, background)
@@ -263,23 +263,29 @@ class Img:
         black_y = 30
         cv2.putText(background, black_text, (black_x, black_y), font, font_scale, (255, 255, 255), thickness)
 
-    def _draw_moves_history(self, background, moves_info, bg_width, bg_height):
+    def _draw_moves_history(self, background, moves_info, bg_width, bg_height, img_width):
         """Draw moves history on the background."""
         white_moves = moves_info.get('white_moves', [])
         black_moves = moves_info.get('black_moves', [])
         
         # הגדרות פונט
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
+        font_scale = 0.4
         thickness = 1
-        line_height = 20
+        line_height = 18
         
         # כמה מהלכים להציג (המהלכים האחרונים)
-        max_moves_to_show = 8
+        max_moves_to_show = 6
         
-        # תצוגת מהלכים של שחקן לבן (צד שמאל)
-        start_x_white = 20
-        start_y_white = 80
+        # חישוב מיקום הלוח כדי להימנע מחפיפה
+        board_center_x = bg_width // 2
+        board_width_estimated = img_width  # גודל הלוח הנוכחי (אחרי resize)
+        board_left = board_center_x - board_width_estimated // 2
+        board_right = board_center_x + board_width_estimated // 2
+        
+        # תצוגת מהלכים של שחקן לבן (צד שמאל רחוק)
+        start_x_white = 20  # שמאל קיצוני
+        start_y_white = 120
         
         white_title = "WHITE MOVES:"
         cv2.putText(background, white_title, (start_x_white, start_y_white), 
@@ -292,9 +298,9 @@ class Img:
             cv2.putText(background, move_text, (start_x_white, y_pos), 
                        font, font_scale, (200, 200, 200), thickness)
         
-        # תצוגת מהלכים של שחקן שחור (צד ימין)
-        start_x_black = bg_width - 300
-        start_y_black = 80
+        # תצוגת מהלכים של שחקן שחור (קרוב יותר ללוח)
+        start_x_black = bg_width - 250  # קרוב עוד יותר ללוח
+        start_y_black = 120
         
         black_title = "BLACK MOVES:"
         cv2.putText(background, black_title, (start_x_black, start_y_black), 
