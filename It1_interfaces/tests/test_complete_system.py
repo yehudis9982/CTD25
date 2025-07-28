@@ -1,5 +1,5 @@
 """
-בדיקה של המבנה החדש: NewState + NewPieceFactory + קונפיגורציות
+בדיקה של המבנה החדש: State + PieceFactory + קונפיגורציות
 """
 
 import sys
@@ -7,7 +7,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pathlib
-from NewPieceFactory import NewPieceFactory
+from PieceFactory import PieceFactory
 from Board import Board
 from img import Img
 
@@ -29,7 +29,7 @@ def test_new_system():
         )
         
         pieces_root = pathlib.Path(__file__).parent.parent.parent / "pieces"
-        factory = NewPieceFactory(board, pieces_root)
+        factory = PieceFactory(board, pieces_root)
         
         print(f"✅ יצר NewPieceFactory עם {len(factory.templates)} תבניות")
         
@@ -71,7 +71,7 @@ def test_state_transitions():
     
     try:
         # שימוש דמה לבדיקת State
-        from NewState import State
+        from State import State
         from Command import Command
         
         # יצור mock objects

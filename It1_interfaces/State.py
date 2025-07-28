@@ -1,137 +1,129 @@
-import logging
 from Command import Command
 from Moves import Moves
 from Graphics import Graphics
 from Physics import Physics
 from typing import Dict, Optional
-
-logger = logging.getLogger(__name__)
+import time
 
 
 class State:
     def __init__(self, moves: Moves, graphics: Graphics, physics: Physics, game_queue=None):
-        self._moves = moves
-        self._graphics = graphics
-        self._physics = physics
+        self.moves, self.graphics, self.physics = moves, graphics, physics
         self._game_queue = game_queue  # תור פקודות של המשחק
-        self.state = "idle"  # המצב הנוכחי: idle, move, jump, rest_short, rest_long
-        self.transitions = {
-            "idle": {"move": "move", "jump": "jump"},
-            "move": {"arrived": "rest_long"},
-            "jump": {"arrived": "rest_short"},
-            "rest_short": {"rest_done": "idle"},
-            "rest_long": {"rest_done": "idle"},
-        }
-        self.rest_start = None
-        self.rest_time = {"rest_short": 2000, "rest_long": 5000}  # 2 שניות קצר, 5 שניות ארוך
+        self.transitions: Dict[str, "State"] = {}
+        self.cooldown_end_ms = 0
+        self.name: Optional[str] = None
         self._last_cmd: Optional[Command] = None
 
-    def reset(self, cmd: Command):
-        # print(f"🔧 State.reset: קיבל פקודה {cmd.type} ל-{cmd.target}")
-        self._last_cmd = cmd
-        self._physics.reset(cmd)
-        if cmd.type in ("rest_short", "rest_long"):
-            self.rest_start = cmd.timestamp if hasattr(cmd, "timestamp") else 0
-        # הוספה: מעבר מצב מיידי אם קיבלנו move/jump
-        elif cmd.type in ("move", "jump"):
-            # print(f"🔧 State.reset: עובר למצב {cmd.type}")
-            self._transition(cmd.type, getattr(cmd, "timestamp", 0))
-        
-        # Graphics reset עם הפקודה הנכונה
-        self._graphics.reset(cmd)
+    def __repr__(self):
+        return f"State({self.name})"
 
-    def update(self, now_ms: int) -> "State":
-        self._graphics.update(now_ms)
-        # טיפול במצבי מנוחה
-        if self.state in ("rest_short", "rest_long"):
-            if self.rest_start is not None and now_ms - self.rest_start >= self.rest_time[self.state]:
-                elapsed = (now_ms - self.rest_start) / 1000  # שניות
-                expected = self.rest_time[self.state] / 1000  # שניות
-                logger.info(f"מנוחה {self.state} הסתיימה אחרי {elapsed:.1f} שניות (ציפייה: {expected:.1f})")
-                self._last_cmd = Command(timestamp=now_ms, piece_id=None, type="rest_done", params=None)
-                self._transition("rest_done", now_ms)
+    # configuration ------------
+    def set_transition(self, event: str, target: "State"):
+        self.transitions[event] = target
+
+    # runtime -------------------
+    def reset(self, cmd: Command):
+        # החלף לאנימציה של המצב הנוכחי
+        if hasattr(self.graphics, 'switch_to_state') and self.name:
+            self.graphics.switch_to_state(self.name)
         else:
-            cmd = self._physics.update(now_ms)
-            if cmd is not None:
-                self._last_cmd = cmd
-                # אם זו פקודת arrived, הוסף אותה לתור של המשחק
-                if cmd.type == "arrived":
-                    if self._game_queue is not None:
-                        self._game_queue.put(cmd)
-                self._transition(cmd.type, now_ms)
+            self.graphics.reset(cmd)
+            
+        self.physics.reset(cmd)
+        self._last_cmd = cmd
+        
+        # הגדר cooldown לפי סוג הפקודה
+        if cmd.type == "move":
+            self.cooldown_end_ms = getattr(cmd, 'timestamp', 0) + 5000  # 5 שניות
+        elif cmd.type == "jump":
+            self.cooldown_end_ms = getattr(cmd, 'timestamp', 0) + 2000  # 2 שניות
+
+    def can_transition(self, now_ms: int) -> bool:           # customise per state
+        return now_ms >= self.cooldown_end_ms
+
+    def get_state_after_command(self, cmd: Command, now_ms: int) -> "State":
+        nxt = self.transitions.get(cmd.type)
+
+        # ── internal transition fired by Physics.update() ─────────────────
+        if cmd.type == "arrived" and nxt:
+
+            # 1️⃣ choose rest length according to the *previous* action
+            if self.name == "move":
+                rest_ms = 5000  # long rest after Move
+            elif self.name == "jump":
+                rest_ms = 2000  # short rest after Jump
+            else:  # long_rest → idle, idle → idle, …
+                rest_ms = 0
+
+            # 2️⃣ restart graphics of the next state
+            if hasattr(nxt.graphics, 'switch_to_state') and nxt.name:
+                nxt.graphics.switch_to_state(nxt.name)
+            else:
+                nxt.graphics.reset(cmd)
+
+            # 3️⃣ arm the Physics timer *only if* we have to wait
+            if rest_ms:
+                p = nxt.physics
+                if hasattr(p, 'start_ms'):
+                    p.start_ms = now_ms  # timer starts *now*
+                if hasattr(p, 'duration_ms'):
+                    p.duration_ms = rest_ms
+                if hasattr(p, 'wait_only'):
+                    p.wait_only = True
+
+                nxt.cooldown_end_ms = now_ms + rest_ms
+                
+                # וודא שהגרפיקה רצה במהלך ה-rest
+                nxt.graphics.running = True
+            else:
+                nxt.cooldown_end_ms = 0
+                # אם אין rest, וודא שהגרפיקה של idle רצה
+                nxt.graphics.running = True
+
+            return nxt
+
+        if nxt is None:
+            return self                      # stay put
+
+        # ✅ בדיקת cooldown רק לפקודות חיצוניות (לא arrived)
+        if cmd.type != "arrived" and not self.can_transition(now_ms):
+            return self  # לא מעבירים פקודה במהלך cooldown
+
+        # if cooldown expired, perform the transition
+        if self.can_transition(now_ms):
+            nxt.reset(cmd)                   # this starts the travel
+            return nxt
+
+        # cooldown not finished → refresh current physics/graphics
+        self.reset(cmd)
         return self
 
-    def _transition(self, event: str, now_ms: int):
-        next_state = self.transitions.get(self.state, {}).get(event)
-        if next_state:
-            old_state = self.state
-            self.state = next_state
-            logger.info(f"מעבר מצב: {old_state} -> {self.state} (אירוע: {event})")
-            
-            # עדכן Graphics עם reset שמכיל את המצב החדש
-            state_cmd = Command(timestamp=now_ms, piece_id=None, type="state_change", 
-                              params={"target_state": self.state})
-            self._graphics.reset(state_cmd)
-            
-            # אתחול מנוחה אם צריך
-            if self.state in ("rest_short", "rest_long"):
-                self.rest_start = now_ms
-                rest_duration = self.rest_time[self.state] / 1000  # המרה למילישניות
-                logger.info(f"התחלת מנוחה {self.state} למשך {rest_duration} שניות")
-            elif self.state == "idle":
-                self.rest_start = None  # איפוס מנוחה כשחוזרים ל-idle
-                logger.info(f"חזרה למצב idle - מוכן לתנועה חדשה")
-
-    def can_transition(self, now_ms: int) -> bool:
-        # אפשר להרחיב לפי הצורך
-        return True
+    def update(self, now_ms: int) -> "State":
+        internal = self.physics.update(now_ms)
+        if internal:
+            # אם זו פקודת arrived, הוסף אותה לתור של המשחק
+            if internal.type == "arrived" and self._game_queue is not None:
+                self._game_queue.put(internal)
+            return self.get_state_after_command(internal, now_ms)
+        self.graphics.update(now_ms)
+        return self
 
     def get_command(self) -> Optional[Command]:
         return self._last_cmd
 
+    # מתודות תואמות למבנה הישן
     def process_command(self, cmd: Command) -> "State":
-        """Process an incoming command and return the next state."""
-        # print(f"🔧 State.process_command: מעבד פקודה {cmd.type} עבור {cmd.piece_id}")
-        
-        # בדיקה אם הכלי במנוחה - דחה פקודות תנועה חדשות
-        if self.state in ("rest_short", "rest_long") and cmd.type in ("move", "jump"):
-            if self.rest_start is not None:
-                now_ms = cmd.timestamp if hasattr(cmd, 'timestamp') else 0
-                elapsed_ms = now_ms - self.rest_start
-                required_ms = self.rest_time[self.state]
-                
-                if elapsed_ms < required_ms:
-                    remaining_sec = (required_ms - elapsed_ms) / 1000
-                    logger.warning(f"{cmd.piece_id} במנוחה {self.state} - נותרו {remaining_sec:.1f} שניות - דוחה פקודת {cmd.type}")
-                    return self  # דחה את הפקודה
-        
-        # טיפול בפקודות תנועה
-        if cmd.type == "move":
-            logger.info(f"State: מבצע תנועה ל-{cmd.target}")
-            
-            # איפוס הפיזיקה לטפל בתנועה עם אנימציה
-            self._physics.reset(cmd)
-            
-            # מעבר מיידי למצב move
-            self.state = "move"
-            self._last_cmd = cmd
-            
-        elif cmd.type == "jump":
-            logger.info(f"State: מבצע קפיצה ל-{cmd.target}")
-            if hasattr(self._physics, 'cell') and cmd.target:
-                old_pos = self._physics.cell
-                self._physics.cell = cmd.target
-                logger.debug(f"State: עדכון מיקום מ-{old_pos} ל-{self._physics.cell}")
-            
-            self.state = "jump"
-            self._last_cmd = cmd
-            self._transition("arrived", cmd.timestamp if hasattr(cmd, 'timestamp') else 0)
-            
-        elif cmd.type == "reset":
-            # print(f"🔧 State: איפוס למצב idle")
-            self.reset(cmd)
-        
-        else:
-            logger.warning(f"State: פקודה לא מוכרת: {cmd.type}")
-        
-        return self
+        """תואמות עם הממשק הישן"""
+        return self.get_state_after_command(cmd, getattr(cmd, 'timestamp', 0))
+
+    @property
+    def state(self) -> str:
+        """תואמות עם הממשק הישן"""
+        return self.name or "unknown"
+    
+    def _transition(self, event: str, now_ms: int):
+        """תואמות עם הממשק הישן"""
+        return self.get_state_after_command(
+            Command(now_ms, None, event, []), now_ms
+        )

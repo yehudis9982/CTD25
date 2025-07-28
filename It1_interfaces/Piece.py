@@ -38,7 +38,7 @@ class Piece:
         Draw the piece on the board using its graphics and physics position.
         משתמש ב-pixel_pos עבור אנימציה חלקה במקום cell
         """
-        # תמיכה בשני הסוגים: NewState (graphics, physics) ו-State הישן (_graphics, _physics)
+        # תמיכה בשני הסוגים: State (graphics, physics) ו-State הישן (_graphics, _physics)
         graphics = getattr(self._state, "graphics", None) or getattr(self._state, "_graphics", None)
         physics = getattr(self._state, "physics", None) or getattr(self._state, "_physics", None)
         if graphics is not None and physics is not None:

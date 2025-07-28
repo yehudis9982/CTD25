@@ -2,7 +2,7 @@ import logging
 from img import Img
 from Board import Board
 from Game import Game
-from NewPieceFactory import NewPieceFactory  # השתמש במפעל החדש
+from PieceFactory import PieceFactory  # השתמש במפעל החדש
 import pathlib
 import cv2
 
@@ -34,7 +34,7 @@ board = Board(
 )
 
 pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
-factory = NewPieceFactory(board, pieces_root)  # השתמש במפעל החדש
+factory = PieceFactory(board, pieces_root)  # השתמש במפעל החדש
 
 start_positions = [
     # כלים שחורים בחלק העליון של הלוח (שורות 0-1)

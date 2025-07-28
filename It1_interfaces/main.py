@@ -2,7 +2,7 @@ import logging
 from img import Img
 from Board import Board
 from Game import Game
-from NewPieceFactory import NewPieceFactory  # השתמש במפעל החדש
+from PieceFactory import PieceFactory  # השתמש במפעל החדש
 import pathlib
 import cv2
 
@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 logger.info("Starting chess game with New State Pattern")
-logger.info("מתחיל משחק שחמט עם NewState + קונפיגורציות")
+logger.info("מתחיל משחק שחמט עם State + קונפיגורציות")
 
 # טען את התמונה
 logger.info("Loading board image")
@@ -34,7 +34,7 @@ board = Board(
 )
 
 pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
-factory = NewPieceFactory(board, pieces_root)  # השתמש במפעל החדש
+factory = PieceFactory(board, pieces_root)  # השתמש במפעל החדש
 
 start_positions = [
     # כלים שחורים בחלק העליון של הלוח (שורות 0-1)
@@ -62,7 +62,7 @@ for p_type, cell in start_positions:
         piece = factory.create_piece(p_type, cell, game.user_input_queue)
         # Override the piece ID with unique ID
         piece.piece_id = unique_id
-        # Update physics with the correct piece_id - תיקון לNewState
+        # Update physics with the correct piece_id - תיקון ל-State
         if hasattr(piece._state, 'physics'):
             piece._state.physics.piece_id = unique_id
         elif hasattr(piece._state, '_physics'):

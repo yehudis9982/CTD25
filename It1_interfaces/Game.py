@@ -154,7 +154,7 @@ class Game:
             self.jumping_pieces.remove(cmd.piece_id)
             logger.debug(f"כלי {cmd.piece_id} סיים קפיצה")
         
-        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        # תמיכה בשני הסוגים: State (physics) ו-State הישן (_physics)
         physics = getattr(arriving_piece._state, 'physics', None) or getattr(arriving_piece._state, '_physics', None)
         target_pos = physics.cell if physics else None
         if not target_pos:
@@ -214,7 +214,7 @@ class Game:
         new_queen = factory.create_piece(queen_type, position, self.user_input_queue)
         new_queen.piece_id = queen_id
         
-        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        # תמיכה בשני הסוגים: State (physics) ו-State הישן (_physics)
         physics = getattr(new_queen._state, 'physics', None) or getattr(new_queen._state, '_physics', None)
         if physics:
             physics.piece_id = queen_id
@@ -378,7 +378,7 @@ class Game:
     def _get_piece_position(self, piece):
         if not piece:
             return None
-        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        # תמיכה בשני הסוגים: State (physics) ו-State הישן (_physics)
         if hasattr(piece, '_state'):
             physics = getattr(piece._state, 'physics', None) or getattr(piece._state, '_physics', None)
             if physics and hasattr(physics, 'cell'):
@@ -465,7 +465,7 @@ class Game:
         
         dx, dy = new_x - current_pos[0], new_y - current_pos[1]
         
-        # תמיכה בשני הסוגים: NewState (moves) ו-State הישן (_moves)
+        # תמיכה בשני הסוגים: State (moves) ו-State הישן (_moves)
         moves_obj = None
         if hasattr(piece._state, 'moves'):
             moves_obj = piece._state.moves
