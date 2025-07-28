@@ -13,9 +13,13 @@ class Piece:
     def on_command(self, cmd: Command, now_ms: int):
         """Handle a command for this piece."""
         if hasattr(self._state, "process_command"):
-            self._state = self._state.process_command(cmd)
+            new_state = self._state.process_command(cmd)
+            if new_state:
+                self._state = new_state
         if hasattr(self._state, "update"):
-            self._state.update(now_ms)
+            new_state = self._state.update(now_ms)
+            if new_state:
+                self._state = new_state
 
     def reset(self, start_ms: int = 0):
         """Reset the piece to idle state."""
@@ -25,15 +29,18 @@ class Piece:
     def update(self, now_ms: int):
         """Update the piece state based on current time."""
         if hasattr(self._state, "update"):
-            self._state.update(now_ms)
+            new_state = self._state.update(now_ms)
+            if new_state:
+                self._state = new_state
 
     def draw_on_board(self, board: Board, now_ms: int):
         """
         Draw the piece on the board using its graphics and physics position.
         משתמש ב-pixel_pos עבור אנימציה חלקה במקום cell
         """
-        graphics = getattr(self._state, "_graphics", None)
-        physics = getattr(self._state, "_physics", None)
+        # תמיכה בשני הסוגים: NewState (graphics, physics) ו-State הישן (_graphics, _physics)
+        graphics = getattr(self._state, "graphics", None) or getattr(self._state, "_graphics", None)
+        physics = getattr(self._state, "physics", None) or getattr(self._state, "_physics", None)
         if graphics is not None and physics is not None:
             img = graphics.get_img()
             # השתמש במיקום הפיקסל החלק במקום תא
@@ -41,9 +48,3 @@ class Piece:
             if pixel_pos is not None:
                 x, y = pixel_pos
                 img.draw_on(board.img, x, y)
-                # debug: הצג גם את מיקום התא ומיקום הפיקסל
-                cell = getattr(physics, "cell", None)
-                # if physics.moving:
-                #     print(f"🏃 מצייר {self.piece_id}: תא {cell} -> פיקסל ({x}, {y})")
-                # else:
-                #     print(f"🧘 מצייר {self.piece_id} במנוחה ב-{cell} -> פיקסל ({x}, {y})")

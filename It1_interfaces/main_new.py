@@ -6,8 +6,8 @@ import pathlib
 import cv2
 
 
-print("🎮 Starting chess game with New State Pattern...")
-print("🎮 מתחיל משחק שחמט עם NewState + קונפיגורציות...")
+print("🎮 Starting chess game with new State Pattern...")
+print("🎮 מתחיל משחק שחמט עם מבנה State חדש...")
 
 # טען את התמונה
 print("📸 Loading board image...")
@@ -46,6 +46,7 @@ piece_counters = {}  # Track count per piece type for unique IDs
 # צור את המשחק עם התור
 game = Game([], board)
 
+print("🔧 Creating pieces with new State Pattern...")
 for p_type, cell in start_positions:
     try:
         # Create unique piece ID by adding counter
@@ -57,21 +58,17 @@ for p_type, cell in start_positions:
         piece = factory.create_piece(p_type, cell, game.user_input_queue)
         # Override the piece ID with unique ID
         piece.piece_id = unique_id
-        # Update physics with the correct piece_id - תיקון לNewState
-        if hasattr(piece._state, 'physics'):
+        # Update physics with the correct piece_id
+        if hasattr(piece, '_state') and hasattr(piece._state, 'physics'):
             piece._state.physics.piece_id = unique_id
-        elif hasattr(piece._state, '_physics'):
-            piece._state._physics.piece_id = unique_id
         pieces.append(piece)
         print(f"✅ יצר {unique_id} במיקום {cell}")
     except Exception as e:
-        print(f"בעיה עם {p_type}: {e}")
+        print(f"❌ בעיה עם {p_type}: {e}")
 
 # עדכן את המשחק עם הכלים
 game.pieces = pieces
 
+print(f"🎮 Created {len(pieces)} pieces successfully!")
 print("🎮 Starting game loop...")
 game.run()
-
-
-

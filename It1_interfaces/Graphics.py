@@ -51,48 +51,75 @@ class Graphics:
         self.current_frame = 0
         self.last_update = 0
         self.running = True
-        
-        # אם יש פקודה עם state, החלף sprites בהתאם
-        if cmd and hasattr(cmd, 'params') and cmd.params and 'target_state' in cmd.params:
-            state_name = cmd.params['target_state']
-            self._switch_sprites_for_state(state_name)
 
-    def _switch_sprites_for_state(self, state_name: str):
-        """החלף sprites לפי שם המצב"""
+    def switch_to_state(self, state_name: str):
+        """החלף לאנימציה של מצב ספציפי"""
         folder_map = {
             "idle": "idle",
             "move": "move", 
             "jump": "jump",
-            "rest_short": "short_rest",
-            "rest_long": "long_rest"
+            "short_rest": "short_rest",
+            "long_rest": "long_rest"
         }
         
         folder_name = folder_map.get(state_name, "idle")
         new_sprites_dir = self.piece_states_dir / folder_name / "sprites"
+        config_path = self.piece_states_dir / folder_name / "config.json"
+        
+        # דיבוג רק לקפיצה
+        if state_name == "jump":
+            print(f"🎬 Starting JUMP animation: {folder_name}")
         
         if new_sprites_dir.exists():
+            # קרא את הקונפיגורציה של המצב החדש
+            graphics_cfg = {}
+            if config_path.exists():
+                import json
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        full_cfg = json.load(f)
+                        graphics_cfg = full_cfg.get("graphics", {})
+                except:
+                    pass
+            
+            # עדכן fps ו-loop מהקונפיגורציה החדשה
+            new_fps = graphics_cfg.get("frames_per_sec", self.fps)
+            new_loop = graphics_cfg.get("is_loop", self.loop)
+            
+            self.fps = new_fps
+            self.loop = new_loop
+            self.frame_time_ms = int(1000 / new_fps)
+            
             self.sprites_folder = new_sprites_dir
             self.frames = self._load_frames()
             self.current_frame = 0
-            print(f"🎨 Graphics החליף למצב {state_name} - {len(self.frames)} פריימים")
-        else:
-            print(f"⚠️ תיקיית sprites לא נמצאה למצב {state_name}: {new_sprites_dir}")
+            self.last_update = 0
+            self.running = True
 
     def update(self, now_ms: int):
         """Advance animation frame based on game-loop time, not wall time."""
-        if not self.running or len(self.frames) == 1:
+        if not self.running or len(self.frames) <= 1:
             return
         if self.last_update == 0:
             self.last_update = now_ms
             return
         if now_ms - self.last_update >= self.frame_time_ms:
+            # דיבוג רק לקפיצה
+            state_name = self.sprites_folder.parent.name if self.sprites_folder.parent else "unknown"
+            if state_name == "jump":
+                print(f"🎞️ JUMP frame: {self.current_frame}/{len(self.frames)} (fps={self.fps})")
+            
             self.current_frame += 1
             if self.current_frame >= len(self.frames):
                 if self.loop:
                     self.current_frame = 0
+                    if state_name == "jump":
+                        print(f"🔄 JUMP loop reset")
                 else:
                     self.current_frame = len(self.frames) - 1
                     self.running = False
+                    if state_name == "jump":
+                        print(f"⏹️ JUMP finished")
             self.last_update = now_ms
 
     def get_img(self) -> Img:

@@ -22,6 +22,11 @@ class Physics:
         self.end_time = 0
         self.mode = "idle"  # מצב פיזי נוכחי: idle/move/jump
         self.piece_id = piece_id  # שמירת ה-ID של הכלי
+        
+        # תמיכה במצב המתנה
+        self.wait_only = False
+        self.start_ms = 0
+        self.duration_ms = 0
 
     def reset(self, cmd: Command):
         """
@@ -50,7 +55,10 @@ class Physics:
             self.moving = False           # אין תנועה בפועל
             # שמירת זמן לפקודת arrived
             self.start_time = getattr(cmd, "time_ms", getattr(cmd, "timestamp", 0))
-            self.end_time = self.start_time + 1  # יצירת arrived מיד במעדכון הבא
+            # חישוב זמן קפיצה על פי המהירות בקונפיגורציה
+            jump_duration_ms = int(1000 / self.speed)  # ככל שהמהירות נמוכה יותר, הקפיצה ארוכה יותר
+            self.end_time = self.start_time + jump_duration_ms
+            self.mode = "jump"  # ודא שהמצב הוא קפיצה
         elif cmd.type == "idle":
             self.target_cell = self.cell
             self.pixel_pos = self.board.cell_to_pixel(self.cell)  # וודא שpixel_pos מעודכן
@@ -63,6 +71,15 @@ class Physics:
         """
         עדכון מצב פיזי לפי הזמן הנוכחי. מחזיר פקודה אם הסתיימה תנועה/קפיצה.
         """
+        # בדיקת מצב המתנה (wait_only)
+        if self.wait_only and self.start_ms > 0 and self.duration_ms > 0:
+            if now_ms >= self.start_ms + self.duration_ms:
+                # המתנה הסתיימה
+                self.wait_only = False
+                print(f"⏰ פיזיקה: המתנה הסתיימה עבור {self.piece_id}")
+                return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
+            return None  # עדיין במצב המתנה
+            
         if self.moving:
             if now_ms >= self.end_time:
                 # תנועה הסתיימה - הגיעה למיקום הסופי

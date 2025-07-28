@@ -24,12 +24,32 @@ class Game:
         self.cursor_pos_player2 = [0, 0]
         self.game_over = False
         self.winner_announced = False
+        self.jumping_pieces = set()  # כלים שנמצאים בקפיצה
+        
+        # טעינת שמות המשתמשים
+        self.player_names = self._load_player_names()
         
         observers = [ScoreTracker(), MoveLogger(), WinnerTracker()]
         self.score_tracker, self.move_logger, self.winner_tracker = observers
         self.publisher = Publisher()
         for observer in observers:
             self.publisher.subscribe(observer)
+
+    def _load_player_names(self):
+        """טוען שמות משתמשים מקובץ Names.json"""
+        try:
+            import json
+            names_path = pathlib.Path(__file__).parent / "Names.json"
+            if names_path.exists():
+                with open(names_path, 'r', encoding='utf-8') as f:
+                    names = json.load(f)
+                    return {
+                        'player1': names.get('player1', 'PLAYER 1'),
+                        'player2': names.get('player2', 'PLAYER 2')
+                    }
+        except Exception as e:
+            print(f"⚠️ לא ניתן לטעון שמות משתמשים: {e}")
+        return {'player1': 'PLAYER 1', 'player2': 'PLAYER 2'}
 
     def game_time_ms(self) -> int:
         return int(time.monotonic() * 1000)
@@ -39,7 +59,7 @@ class Game:
             import pygame
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            sound_path = pathlib.Path(r"C:\Users\01\Desktop\chess\CTD25\Sounds") / f"{sound_name}.mp3"
+            sound_path = pathlib.Path(r"c:\Users\01\Desktop\chess (3)\chess\CTD25\Sounds") / f"{sound_name}.mp3"
             if sound_path.exists():
                 pygame.mixer.music.load(str(sound_path))
                 pygame.mixer.music.play()
@@ -48,7 +68,10 @@ class Game:
                 if sound_name == "win":
                     while pygame.mixer.music.get_busy():
                         pygame.time.wait(100)
-        except:
+            else:
+                print(f"⚠️ לא נמצא קובץ צליל: {sound_path}")
+        except Exception as e:
+            print(f"⚠️ שגיאה בהשמעת צליל: {e}")
             pass
 
     def clone_board(self) -> Board:
@@ -86,6 +109,9 @@ class Game:
         if cmd.type == "arrived":
             self._handle_arrival(cmd)
             return
+        elif cmd.type == "jump":
+            # כשכלי מתחיל קפיצה, מוסיפים אותו לרשימת הקופצים
+            self.jumping_pieces.add(cmd.piece_id)
         
         for piece in self.pieces:
             if piece.piece_id == cmd.piece_id:
@@ -100,12 +126,29 @@ class Game:
         if not arriving_piece:
             return
         
-        target_pos = arriving_piece._state._physics.cell
+        # אם הכלי היה בקפיצה, מוציאים אותו מהרשימה
+        if cmd.piece_id in self.jumping_pieces:
+            self.jumping_pieces.remove(cmd.piece_id)
+        
+        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        physics = getattr(arriving_piece._state, 'physics', None) or getattr(arriving_piece._state, '_physics', None)
+        target_pos = physics.cell if physics else None
+        if not target_pos:
+            return
+            
         self._check_pawn_promotion(arriving_piece, target_pos)
         
-        pieces_to_remove = [p for p in self.pieces if p != arriving_piece and 
-                           p._state._physics.cell == target_pos and 
-                           ('W' in arriving_piece.piece_id) != ('W' in p.piece_id)]
+        pieces_to_remove = []
+        for p in self.pieces:
+            if p != arriving_piece:
+                # אם הכלי נמצא בקפיצה, הוא לא נחשב "נמצא" במשבצת
+                if p.piece_id in self.jumping_pieces:
+                    continue
+                    
+                p_physics = getattr(p._state, 'physics', None) or getattr(p._state, '_physics', None)
+                if (p_physics and p_physics.cell == target_pos and 
+                    ('W' in arriving_piece.piece_id) != ('W' in p.piece_id)):
+                    pieces_to_remove.append(p)
         
         for piece in pieces_to_remove:
             self.pieces.remove(piece)
@@ -138,7 +181,11 @@ class Game:
         
         new_queen = factory.create_piece(queen_type, position, self.user_input_queue)
         new_queen.piece_id = queen_id
-        new_queen._state._physics.piece_id = queen_id
+        
+        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        physics = getattr(new_queen._state, 'physics', None) or getattr(new_queen._state, '_physics', None)
+        if physics:
+            physics.piece_id = queen_id
         
         self.pieces.remove(pawn)
         self.pieces.append(new_queen)
@@ -164,7 +211,8 @@ class Game:
                 'moves_info': {
                     'white_moves': self.move_logger.get_moves("white"),
                     'black_moves': self.move_logger.get_moves("black")
-                }
+                },
+                'player_names': self.player_names
             }
             
             winner_text = self.winner_tracker.get_winner_text()
@@ -252,10 +300,24 @@ class Game:
         if selected_piece is None:
             piece = self._find_piece_at_position(x, y)
             if piece and self._is_player_piece(piece, player_num):
+                # בדיקה אם הכלי במנוחה לפני בחירה
+                if hasattr(piece, '_state') and hasattr(piece._state, 'can_transition'):
+                    if not piece._state.can_transition(self.game_time_ms()):
+                        self.play_sound("fail")  # כלי במנוחה
+                        return
                 setattr(self, selected_attr, piece)
+            elif piece:
+                # מנסים לבחור כלי של השחקן השני
+                self.play_sound("fail")
         else:
             current_pos = self._get_piece_position(selected_piece)
             if current_pos == (x, y):
+                # בדיקה אם הכלי במנוחה לפני קפיצה
+                if hasattr(selected_piece, '_state') and hasattr(selected_piece._state, 'can_transition'):
+                    if not selected_piece._state.can_transition(self.game_time_ms()):
+                        self.play_sound("fail")  # כלי במנוחה
+                        setattr(self, selected_attr, None)
+                        return
                 self.user_input_queue.put(Command(
                     timestamp=self.game_time_ms(),
                     piece_id=selected_piece.piece_id,
@@ -264,14 +326,24 @@ class Game:
                     params=None
                 ))
             else:
+                # בדיקה אם הכלי במנוחה לפני תנועה
+                if hasattr(selected_piece, '_state') and hasattr(selected_piece._state, 'can_transition'):
+                    if not selected_piece._state.can_transition(self.game_time_ms()):
+                        self.play_sound("fail")  # כלי במנוחה
+                        setattr(self, selected_attr, None)
+                        return
                 self._move_piece(selected_piece, x, y, player_num)
             setattr(self, selected_attr, None)
 
     def _get_piece_position(self, piece):
         if not piece:
             return None
-        if hasattr(piece, '_state') and hasattr(piece._state, '_physics') and hasattr(piece._state._physics, 'cell'):
-            return piece._state._physics.cell
+        # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
+        if hasattr(piece, '_state'):
+            physics = getattr(piece._state, 'physics', None) or getattr(piece._state, '_physics', None)
+            if physics and hasattr(physics, 'cell'):
+                # print(f"🎯 מיקום {piece.piece_id}: {physics.cell}")  # disable this debug
+                return physics.cell
         return getattr(piece, 'board_position', None) or (getattr(piece, 'x', None), getattr(piece, 'y', None))
 
     def _find_piece_at_position(self, x, y):
@@ -282,10 +354,12 @@ class Game:
 
     def _move_piece(self, piece, new_x, new_y, player_num):
         if not self._is_valid_move(piece, new_x, new_y, player_num):
+            self.play_sound("fail")  # מהלך לא חוקי
             return
         
         current_pos = self._get_piece_position(piece)
         if not current_pos:
+            self.play_sound("fail")  # לא ניתן למצוא מיקום הכלי
             return
         
         current_x, current_y = current_pos
@@ -294,6 +368,7 @@ class Game:
         
         target_piece = self._find_piece_at_position(final_x, final_y)
         if target_piece and self._is_player_piece(target_piece, player_num):
+            self.play_sound("fail")  # מנסים לתקוף כלי שלנו
             return
         
         start_notation = f"{chr(ord('a') + current_x)}{8 - current_y}"
@@ -343,8 +418,15 @@ class Game:
         
         dx, dy = new_x - current_pos[0], new_y - current_pos[1]
         
-        if hasattr(piece._state, '_moves') and hasattr(piece._state._moves, 'valid_moves'):
-            for move_dx, move_dy, _ in piece._state._moves.valid_moves:
+        # תמיכה בשני הסוגים: NewState (moves) ו-State הישן (_moves)
+        moves_obj = None
+        if hasattr(piece._state, 'moves'):
+            moves_obj = piece._state.moves
+        elif hasattr(piece._state, '_moves'):
+            moves_obj = piece._state._moves
+        
+        if moves_obj and hasattr(moves_obj, 'valid_moves'):
+            for move_dx, move_dy, _ in moves_obj.valid_moves:
                 if dx == move_dx and dy == move_dy:
                     blocking_pos = self._check_path(*current_pos, new_x, new_y, piece.piece_id)
                     return not (blocking_pos and blocking_pos != (new_x, new_y))
@@ -360,6 +442,11 @@ class Game:
     def _announce_win(self):
         self.play_sound("win")
         kings = {p.piece_id for p in self.pieces if p.piece_id.startswith('K')}
-        winner_map = {frozenset(['KB0']): "PLAYER 1 (WHITE) WINS!", frozenset(['KW0']): "PLAYER 2 (BLACK) WINS!"}
+        
+        # שימוש בשמות האמיתיים של השחקנים
+        winner_map = {
+            frozenset(['KB0']): f"{self.player_names['player2']} (BLACK) WINS!",
+            frozenset(['KW0']): f"{self.player_names['player1']} (WHITE) WINS!"
+        }
         winner_text = winner_map.get(frozenset(kings), "GAME OVER!")
         self.winner_tracker.set_winner_text(winner_text)

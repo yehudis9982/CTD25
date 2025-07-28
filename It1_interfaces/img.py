@@ -114,7 +114,7 @@ class Img:
             raise ValueError("Image not loaded.")
         cv2.imshow(window_name, self.img)
 
-    def display_with_background(self, window_name="Game Window", background_scale=1.3, gradient_colors=None, auto_resize_window=True, max_window_size=None, cursors_info=None, score_info=None, moves_info=None):
+    def display_with_background(self, window_name="Game Window", background_scale=1.3, gradient_colors=None, auto_resize_window=True, max_window_size=None, cursors_info=None, score_info=None, moves_info=None, player_names=None):
         """Display the image with a background gradient."""
         if self.img is None:
             raise ValueError("Image not loaded.")
@@ -196,7 +196,7 @@ class Img:
         
         # ציור הניקוד על הרקע
         if score_info:
-            self._draw_score_on_background(background, score_info, bg_width, bg_height)
+            self._draw_score_on_background(background, score_info, bg_width, bg_height, player_names)
         
         # ציור המהלכים על הרקע
         if moves_info:
@@ -239,10 +239,18 @@ class Img:
             piece_bottom_right = (board_x + (px + 1) * cell_width - 1, board_y + (py + 1) * cell_height - 1)
             cv2.rectangle(background, piece_top_left, piece_bottom_right, (255, 0, 255), 4)  # ורוד/מגנטה זוהר עבה
 
-    def _draw_score_on_background(self, background, score_info, bg_width, bg_height):
+    def _draw_score_on_background(self, background, score_info, bg_width, bg_height, player_names=None):
         """Draw score information on the background."""
         white_score = score_info.get('white_score', 0)
         black_score = score_info.get('black_score', 0)
+        
+        # שמות המשתמשים או ברירת מחדל
+        if player_names:
+            player1_name = player_names.get('player1', 'PLAYER 1')
+            player2_name = player_names.get('player2', 'PLAYER 2')
+        else:
+            player1_name = 'PLAYER 1'
+            player2_name = 'PLAYER 2'
         
         # פונט וגודל
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -250,14 +258,14 @@ class Img:
         thickness = 2
         
         # ניקוד שחקן 1 (לבן) - למטה
-        white_text = f"WHITE: {white_score}"
+        white_text = f"{player1_name} (WHITE): {white_score}"
         text_size = cv2.getTextSize(white_text, font, font_scale, thickness)[0]
         white_x = (bg_width - text_size[0]) // 2
         white_y = bg_height - 20
         cv2.putText(background, white_text, (white_x, white_y), font, font_scale, (255, 255, 255), thickness)
         
         # ניקוד שחקן 2 (שחור) - למעלה  
-        black_text = f"BLACK: {black_score}"
+        black_text = f"{player2_name} (BLACK): {black_score}"
         text_size = cv2.getTextSize(black_text, font, font_scale, thickness)[0]
         black_x = (bg_width - text_size[0]) // 2
         black_y = 30
