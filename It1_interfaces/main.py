@@ -5,6 +5,7 @@ from PieceFactory import PieceFactory
 import pathlib
 import cv2
 
+
 print("🎮 Starting chess game...")
 print("🎮 מתחיל משחק שחמט...")
 
