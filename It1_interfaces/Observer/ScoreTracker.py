@@ -1,4 +1,7 @@
+import logging
 from .Subscriber import Subscriber
+
+logger = logging.getLogger(__name__)
 class ScoreTracker(Subscriber):
     def __init__(self):
         self.score = {"white": 0, "black": 0}
@@ -17,7 +20,7 @@ class ScoreTracker(Subscriber):
         captured_by = event.data.get('captured_by', '')
         value = self.piece_values.get(piece_type, 0)
         self.score[captured_by] += value
-        print(f"Score updated: {captured_by} captured {piece_type} (+{value} points). Total scores: {self.score}")
+        logger.info(f"Score updated: {captured_by} captured {piece_type} (+{value} points). Total scores: {self.score}")
     
     def get_score(self, player_color):
         return self.score.get(player_color, 0)

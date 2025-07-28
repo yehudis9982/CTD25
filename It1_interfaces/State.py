@@ -1,8 +1,11 @@
+import logging
 from Command import Command
 from Moves import Moves
 from Graphics import Graphics
 from Physics import Physics
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class State:
@@ -44,7 +47,7 @@ class State:
             if self.rest_start is not None and now_ms - self.rest_start >= self.rest_time[self.state]:
                 elapsed = (now_ms - self.rest_start) / 1000  # שניות
                 expected = self.rest_time[self.state] / 1000  # שניות
-                print(f"⏰ מנוחה {self.state} הסתיימה אחרי {elapsed:.1f} שניות (ציפייה: {expected:.1f})")
+                logger.info(f"מנוחה {self.state} הסתיימה אחרי {elapsed:.1f} שניות (ציפייה: {expected:.1f})")
                 self._last_cmd = Command(timestamp=now_ms, piece_id=None, type="rest_done", params=None)
                 self._transition("rest_done", now_ms)
         else:
@@ -63,7 +66,7 @@ class State:
         if next_state:
             old_state = self.state
             self.state = next_state
-            print(f"🔄 מעבר מצב: {old_state} -> {self.state} (אירוע: {event})")
+            logger.info(f"מעבר מצב: {old_state} -> {self.state} (אירוע: {event})")
             
             # עדכן Graphics עם reset שמכיל את המצב החדש
             state_cmd = Command(timestamp=now_ms, piece_id=None, type="state_change", 
@@ -74,10 +77,10 @@ class State:
             if self.state in ("rest_short", "rest_long"):
                 self.rest_start = now_ms
                 rest_duration = self.rest_time[self.state] / 1000  # המרה למילישניות
-                print(f"💤 התחלת מנוחה {self.state} למשך {rest_duration} שניות")
+                logger.info(f"התחלת מנוחה {self.state} למשך {rest_duration} שניות")
             elif self.state == "idle":
                 self.rest_start = None  # איפוס מנוחה כשחוזרים ל-idle
-                print(f"✅ חזרה למצב idle - מוכן לתנועה חדשה")
+                logger.info(f"חזרה למצב idle - מוכן לתנועה חדשה")
 
     def can_transition(self, now_ms: int) -> bool:
         # אפשר להרחיב לפי הצורך
@@ -99,12 +102,12 @@ class State:
                 
                 if elapsed_ms < required_ms:
                     remaining_sec = (required_ms - elapsed_ms) / 1000
-                    print(f"🚫 {cmd.piece_id} במנוחה {self.state} - נותרו {remaining_sec:.1f} שניות - דוחה פקודת {cmd.type}")
+                    logger.warning(f"{cmd.piece_id} במנוחה {self.state} - נותרו {remaining_sec:.1f} שניות - דוחה פקודת {cmd.type}")
                     return self  # דחה את הפקודה
         
         # טיפול בפקודות תנועה
         if cmd.type == "move":
-            print(f"🎯 State: מבצע תנועה ל-{cmd.target}")
+            logger.info(f"State: מבצע תנועה ל-{cmd.target}")
             
             # איפוס הפיזיקה לטפל בתנועה עם אנימציה
             self._physics.reset(cmd)
@@ -114,11 +117,11 @@ class State:
             self._last_cmd = cmd
             
         elif cmd.type == "jump":
-            print(f"🎯 State: מבצע קפיצה ל-{cmd.target}")
+            logger.info(f"State: מבצע קפיצה ל-{cmd.target}")
             if hasattr(self._physics, 'cell') and cmd.target:
                 old_pos = self._physics.cell
                 self._physics.cell = cmd.target
-                print(f"🎯 State: עדכון מיקום מ-{old_pos} ל-{self._physics.cell}")
+                logger.debug(f"State: עדכון מיקום מ-{old_pos} ל-{self._physics.cell}")
             
             self.state = "jump"
             self._last_cmd = cmd
@@ -129,6 +132,6 @@ class State:
             self.reset(cmd)
         
         else:
-            print(f"❓ State: פקודה לא מוכרת: {cmd.type}")
+            logger.warning(f"State: פקודה לא מוכרת: {cmd.type}")
         
         return self

@@ -1,6 +1,9 @@
 from typing import Tuple, Optional
+import logging
 from Command import Command
 from Board import Board
+
+logger = logging.getLogger(__name__)
 
 
 class Physics:
@@ -76,7 +79,7 @@ class Physics:
             if now_ms >= self.start_ms + self.duration_ms:
                 # המתנה הסתיימה
                 self.wait_only = False
-                print(f"⏰ פיזיקה: המתנה הסתיימה עבור {self.piece_id}")
+                logger.info(f"פיזיקה: המתנה הסתיימה עבור {self.piece_id}")
                 return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
             return None  # עדיין במצב המתנה
             
@@ -86,7 +89,7 @@ class Physics:
                 self.cell = self.target_cell
                 self.pixel_pos = self.board.cell_to_pixel(self.cell)
                 self.moving = False
-                print(f"🏁 פיזיקה: החתיכה ב-{self.cell} הגיעה ליעד")
+                logger.info(f"פיזיקה: החתיכה ב-{self.cell} הגיעה ליעד")
                 return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
             else:
                 # תנועה בתהליך - אינטרפולציה חלקה
@@ -105,7 +108,7 @@ class Physics:
                 self.pixel_pos = (int(x), int(y))
         elif self.mode == "jump" and now_ms >= self.end_time:
             # קפיצה הסתיימה - צריך ליצור פקודת arrived
-            print(f"🏁 פיזיקה: החתיכה קפצה ל-{self.cell}")
+            logger.info(f"פיזיקה: החתיכה קפצה ל-{self.cell}")
             self.mode = "idle"  # סיום הקפיצה
             return Command(timestamp=now_ms, piece_id=self.piece_id, type="arrived", target=self.cell, params=None)
         return None

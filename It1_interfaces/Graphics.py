@@ -1,9 +1,12 @@
 import pathlib
+import logging
 from typing import List, Dict, Optional
 import copy
 from img import Img
 from Command import Command
 from Board import Board
+
+logger = logging.getLogger(__name__)
 
 
 class Graphics:
@@ -68,7 +71,7 @@ class Graphics:
         
         # דיבוג רק לקפיצה
         if state_name == "jump":
-            print(f"🎬 Starting JUMP animation: {folder_name}")
+            logger.info(f"Starting JUMP animation: {folder_name}")
         
         if new_sprites_dir.exists():
             # קרא את הקונפיגורציה של המצב החדש
@@ -107,19 +110,19 @@ class Graphics:
             # דיבוג רק לקפיצה
             state_name = self.sprites_folder.parent.name if self.sprites_folder.parent else "unknown"
             if state_name == "jump":
-                print(f"🎞️ JUMP frame: {self.current_frame}/{len(self.frames)} (fps={self.fps})")
+                logger.debug(f"JUMP frame: {self.current_frame}/{len(self.frames)} (fps={self.fps})")
             
             self.current_frame += 1
             if self.current_frame >= len(self.frames):
                 if self.loop:
                     self.current_frame = 0
                     if state_name == "jump":
-                        print(f"🔄 JUMP loop reset")
+                        logger.debug(f"JUMP loop reset")
                 else:
                     self.current_frame = len(self.frames) - 1
                     self.running = False
                     if state_name == "jump":
-                        print(f"⏹️ JUMP finished")
+                        logger.info(f"JUMP finished")
             self.last_update = now_ms
 
     def get_img(self) -> Img:

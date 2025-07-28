@@ -1,3 +1,4 @@
+import logging
 from img import Img
 from Board import Board
 from Game import Game
@@ -5,16 +6,20 @@ from NewPieceFactory import NewPieceFactory  # השתמש במפעל החדש
 import pathlib
 import cv2
 
+# הגדרת לוגגר
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-print("🎮 Starting chess game with New State Pattern...")
-print("🎮 מתחיל משחק שחמט עם NewState + קונפיגורציות...")
+logger.info("Starting chess game with New State Pattern")
+logger.info("מתחיל משחק שחמט עם NewState + קונפיגורציות")
 
 # טען את התמונה
-print("📸 Loading board image...")
+logger.info("Loading board image")
 img = Img()
-img.read(r"c:\Users\01\Desktop\chess\CTD25\board.png")
-print("📸 Image loaded:", img.img is not None)
+img.read(pathlib.Path(__file__).parent.parent / "board.png")
+logger.info("Image loaded successfully: %s", img.img is not None)
 if img.img is None:
+    logger.error("Board image failed to load!")
     raise RuntimeError("Board image failed to load!")
 
 # צור את הלוח עם התמונה
@@ -28,7 +33,7 @@ board = Board(
     img=img
 )
 
-pieces_root = pathlib.Path(r"c:\Users\01\Desktop\chess\CTD25\pieces")
+pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
 factory = NewPieceFactory(board, pieces_root)  # השתמש במפעל החדש
 
 start_positions = [
@@ -63,14 +68,14 @@ for p_type, cell in start_positions:
         elif hasattr(piece._state, '_physics'):
             piece._state._physics.piece_id = unique_id
         pieces.append(piece)
-        print(f"✅ יצר {unique_id} במיקום {cell}")
+        logger.info("Created piece %s at position %s", unique_id, cell)
     except Exception as e:
-        print(f"בעיה עם {p_type}: {e}")
+        logger.error("Problem creating piece %s: %s", p_type, e)
 
 # עדכן את המשחק עם הכלים
 game.pieces = pieces
 
-print("🎮 Starting game loop...")
+logger.info("Starting game loop")
 game.run()
 
 

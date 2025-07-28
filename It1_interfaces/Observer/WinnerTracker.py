@@ -1,4 +1,7 @@
+import logging
 from .Subscriber import Subscriber
+
+logger = logging.getLogger(__name__)
 
 
 class WinnerTracker(Subscriber):
@@ -14,7 +17,7 @@ class WinnerTracker(Subscriber):
             self.game_over = True
             self.winner = event.data.get("winner", "Unknown")
             self.winner_text = event.data.get("winner_text", "🎮 המשחק נגמר! 🎮")
-            print(f"🏆 Game Over! Winner: {self.winner}")
+            logger.info(f"Game Over! Winner: {self.winner}")
     
     def is_game_over(self):
         """Check if game is over"""

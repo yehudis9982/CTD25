@@ -17,7 +17,7 @@ def test_real_game_promotion():
     
     # יצירת לוח ומפעל כלים כמו במשחק האמיתי
     img = Img()
-    img.read(r"c:\Users\01\Desktop\chess\CTD25\board.png")
+    img.read(pathlib.Path(__file__).parent.parent.parent / "board.png")
     
     board = Board(
         cell_H_pix=103.5,
@@ -28,7 +28,7 @@ def test_real_game_promotion():
         H_cells=8,
         img=img
     )
-    pieces_root = pathlib.Path(r"c:\Users\01\Desktop\chess\CTD25\pieces")
+    pieces_root = pathlib.Path(__file__).parent.parent.parent / "pieces"
     factory = PieceFactory(board, pieces_root)
     
     # צור משחק

@@ -27,7 +27,7 @@ def test_piece_factory_with_config():
         img=img
     )
     
-    pieces_root = pathlib.Path(r"C:\Users\01\Desktop\chess (3)\chess\CTD25\pieces")
+    pieces_root = pathlib.Path(__file__).parent.parent.parent / "pieces"
     factory = PieceFactory(board, pieces_root)
     
     # בדוק שתיקיית הכלי קיימת
@@ -83,7 +83,7 @@ def test_piece_factory_with_config():
 def test_config_loading():
     print("\n🔧 בודק טעינת קונפיגורציה...")
     
-    nw_states_dir = pathlib.Path(r"C:\Users\01\Desktop\chess (3)\chess\CTD25\pieces\NW\states")
+    nw_states_dir = pathlib.Path(__file__).parent.parent.parent / "pieces" / "NW" / "states"
     
     if not nw_states_dir.exists():
         print("❌ תיקיית states לא נמצאה")

@@ -1,4 +1,4 @@
-import pathlib, queue, time, cv2
+import pathlib, queue, time, cv2, logging
 from typing import List
 from img import Img
 from Board import Board
@@ -10,6 +10,10 @@ from Observer.PieceCaptureEvent import PieceCaptureEvent
 from Observer.MoveLogger import MoveLogger
 from Observer.MoveMadeEvent import MoveMadeEvent
 from Observer.WinnerTracker import WinnerTracker
+
+# הגדרת לוגגר פשוטה
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class InvalidBoard(Exception): ...
 
@@ -43,13 +47,20 @@ class Game:
             if names_path.exists():
                 with open(names_path, 'r', encoding='utf-8') as f:
                     names = json.load(f)
-                    return {
+                    player_names = {
                         'player1': names.get('player1', 'PLAYER 1'),
                         'player2': names.get('player2', 'PLAYER 2')
                     }
+                    logger.info(f"טעינת שמות שחקנים: {player_names}")
+                    return player_names
+            else:
+                logger.warning(f"קובץ Names.json לא נמצא בנתיב: {names_path}")
         except Exception as e:
-            print(f"⚠️ לא ניתן לטעון שמות משתמשים: {e}")
-        return {'player1': 'PLAYER 1', 'player2': 'PLAYER 2'}
+            logger.error(f"שגיאה בטעינת שמות משתמשים: {e}")
+        
+        default_names = {'player1': 'PLAYER 1', 'player2': 'PLAYER 2'}
+        logger.info(f"שימוש בשמות ברירת מחדל: {default_names}")
+        return default_names
 
     def game_time_ms(self) -> int:
         return int(time.monotonic() * 1000)
@@ -59,8 +70,11 @@ class Game:
             import pygame
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
-            sound_path = pathlib.Path(r"c:\Users\01\Desktop\chess (3)\chess\CTD25\Sounds") / f"{sound_name}.mp3"
+                logger.debug("pygame mixer אותחל")
+            
+            sound_path = pathlib.Path(__file__).parent / "Sounds" / f"{sound_name}.mp3"
             if sound_path.exists():
+                logger.debug(f"משמיע צליל: {sound_name}")
                 pygame.mixer.music.load(str(sound_path))
                 pygame.mixer.music.play()
                 while not pygame.mixer.music.get_busy():
@@ -69,18 +83,21 @@ class Game:
                     while pygame.mixer.music.get_busy():
                         pygame.time.wait(100)
             else:
-                print(f"⚠️ לא נמצא קובץ צליל: {sound_path}")
+                logger.warning(f"קובץ צליל לא נמצא: {sound_path}")
         except Exception as e:
-            print(f"⚠️ שגיאה בהשמעת צליל: {e}")
+            logger.error(f"שגיאה בהשמעת צליל '{sound_name}': {e}")
             pass
 
     def clone_board(self) -> Board:
         return self.board.clone()
 
     def run(self):
+        logger.info("התחלת משחק שחמט")
         start_ms = self.game_time_ms()
         for p in self.pieces:
             p.reset(start_ms)
+        
+        logger.info(f"משחק מתחיל עם {len(self.pieces)} כלים")
 
         while not self.game_over:
             now = self.game_time_ms()
@@ -103,20 +120,25 @@ class Game:
         if self.game_over:
             while not self.user_input_queue.empty():
                 self.user_input_queue.get()
+        logger.info("המשחק הסתיים")
         cv2.destroyAllWindows()
 
     def _process_input(self, cmd : Command):
+        logger.debug(f"מעבד פקודה: {cmd.type} עבור כלי {cmd.piece_id}")
+        
         if cmd.type == "arrived":
             self._handle_arrival(cmd)
             return
         elif cmd.type == "jump":
             # כשכלי מתחיל קפיצה, מוסיפים אותו לרשימת הקופצים
             self.jumping_pieces.add(cmd.piece_id)
+            logger.debug(f"כלי {cmd.piece_id} מתחיל קפיצה")
         
         for piece in self.pieces:
             if piece.piece_id == cmd.piece_id:
                 piece.on_command(cmd, self.game_time_ms())
                 if self._is_win() and not self.winner_announced:
+                    logger.info("זוהה ניצחון במשחק")
                     self._announce_win()
                     self.winner_announced = True
                 break
@@ -124,17 +146,22 @@ class Game:
     def _handle_arrival(self, cmd: Command):
         arriving_piece = next((p for p in self.pieces if p.piece_id == cmd.piece_id), None)
         if not arriving_piece:
+            logger.warning(f"כלי לא נמצא עבור פקודת הגעה: {cmd.piece_id}")
             return
         
         # אם הכלי היה בקפיצה, מוציאים אותו מהרשימה
         if cmd.piece_id in self.jumping_pieces:
             self.jumping_pieces.remove(cmd.piece_id)
+            logger.debug(f"כלי {cmd.piece_id} סיים קפיצה")
         
         # תמיכה בשני הסוגים: NewState (physics) ו-State הישן (_physics)
         physics = getattr(arriving_piece._state, 'physics', None) or getattr(arriving_piece._state, '_physics', None)
         target_pos = physics.cell if physics else None
         if not target_pos:
+            logger.warning(f"לא ניתן לקבוע מיקום יעד עבור כלי {cmd.piece_id}")
             return
+        
+        logger.debug(f"כלי {cmd.piece_id} הגיע למיקום {target_pos}")
             
         self._check_pawn_promotion(arriving_piece, target_pos)
         
@@ -154,10 +181,12 @@ class Game:
             self.pieces.remove(piece)
             piece_type = piece.piece_id[0]
             captured_by = "white" if 'W' in arriving_piece.piece_id else "black"
+            logger.info(f"כלי {piece.piece_id} נתפס על ידי {arriving_piece.piece_id}")
             self.publisher.notify(PieceCaptureEvent(piece_type, captured_by))
             self.play_sound("keel")
         
         if pieces_to_remove and self._is_win() and not self.winner_announced:
+            logger.info("ניצחון לאחר תפיסת כלי")
             self._announce_win()
             self.winner_announced = True
 
@@ -170,14 +199,17 @@ class Game:
         color = 'W' if 'W' in piece.piece_id else 'B'
         
         if (color, row) in promotion_rules:
+            logger.info(f"חיל {piece.piece_id} מתקדם למלכה במיקום {target_pos}")
             self._promote_pawn_to_queen(piece, promotion_rules[(color, row)], target_pos)
 
     def _promote_pawn_to_queen(self, pawn, queen_type, position):
         from PieceFactory import PieceFactory
-        factory = PieceFactory(self.board, pathlib.Path(r"c:\Users\01\Desktop\chess\CTD25\pieces"))
+        factory = PieceFactory(self.board, pathlib.Path(__file__).parent.parent / "pieces")
         
         existing_queens = [p for p in self.pieces if p.piece_id.startswith(queen_type)]
         queen_id = f"{queen_type}{len(existing_queens)}"
+        
+        logger.info(f"יוצר מלכה חדשה: {queen_id} במיקום {position}")
         
         new_queen = factory.create_piece(queen_type, position, self.user_input_queue)
         new_queen.piece_id = queen_id
@@ -189,6 +221,7 @@ class Game:
         
         self.pieces.remove(pawn)
         self.pieces.append(new_queen)
+        logger.info(f"חיל {pawn.piece_id} הוחלף במלכה {queen_id}")
 
     def _draw(self):
         display_board = self.clone_board()
@@ -303,11 +336,14 @@ class Game:
                 # בדיקה אם הכלי במנוחה לפני בחירה
                 if hasattr(piece, '_state') and hasattr(piece._state, 'can_transition'):
                     if not piece._state.can_transition(self.game_time_ms()):
+                        logger.debug(f"כלי {piece.piece_id} במנוחה - לא ניתן לבחור")
                         self.play_sound("fail")  # כלי במנוחה
                         return
+                logger.debug(f"שחקן {player_num} בחר כלי {piece.piece_id} במיקום {cursor_pos}")
                 setattr(self, selected_attr, piece)
             elif piece:
                 # מנסים לבחור כלי של השחקן השני
+                logger.debug(f"שחקן {player_num} מנסה לבחור כלי של יריב: {piece.piece_id}")
                 self.play_sound("fail")
         else:
             current_pos = self._get_piece_position(selected_piece)
@@ -315,9 +351,11 @@ class Game:
                 # בדיקה אם הכלי במנוחה לפני קפיצה
                 if hasattr(selected_piece, '_state') and hasattr(selected_piece._state, 'can_transition'):
                     if not selected_piece._state.can_transition(self.game_time_ms()):
+                        logger.debug(f"כלי {selected_piece.piece_id} במנוחה - לא ניתן לקפוץ")
                         self.play_sound("fail")  # כלי במנוחה
                         setattr(self, selected_attr, None)
                         return
+                logger.debug(f"כלי {selected_piece.piece_id} מבצע קפיצה במקום")
                 self.user_input_queue.put(Command(
                     timestamp=self.game_time_ms(),
                     piece_id=selected_piece.piece_id,
@@ -329,9 +367,11 @@ class Game:
                 # בדיקה אם הכלי במנוחה לפני תנועה
                 if hasattr(selected_piece, '_state') and hasattr(selected_piece._state, 'can_transition'):
                     if not selected_piece._state.can_transition(self.game_time_ms()):
+                        logger.debug(f"כלי {selected_piece.piece_id} במנוחה - לא ניתן לזוז")
                         self.play_sound("fail")  # כלי במנוחה
                         setattr(self, selected_attr, None)
                         return
+                logger.debug(f"מנסה להזיז כלי {selected_piece.piece_id} מ-{current_pos} ל-{cursor_pos}")
                 self._move_piece(selected_piece, x, y, player_num)
             setattr(self, selected_attr, None)
 
@@ -342,7 +382,6 @@ class Game:
         if hasattr(piece, '_state'):
             physics = getattr(piece._state, 'physics', None) or getattr(piece._state, '_physics', None)
             if physics and hasattr(physics, 'cell'):
-                # print(f"🎯 מיקום {piece.piece_id}: {physics.cell}")  # disable this debug
                 return physics.cell
         return getattr(piece, 'board_position', None) or (getattr(piece, 'x', None), getattr(piece, 'y', None))
 
@@ -354,11 +393,13 @@ class Game:
 
     def _move_piece(self, piece, new_x, new_y, player_num):
         if not self._is_valid_move(piece, new_x, new_y, player_num):
+            logger.debug(f"מהלך לא חוקי: {piece.piece_id} ל-({new_x}, {new_y})")
             self.play_sound("fail")  # מהלך לא חוקי
             return
         
         current_pos = self._get_piece_position(piece)
         if not current_pos:
+            logger.warning(f"לא ניתן למצוא מיקום נוכחי עבור כלי {piece.piece_id}")
             self.play_sound("fail")  # לא ניתן למצוא מיקום הכלי
             return
         
@@ -368,11 +409,17 @@ class Game:
         
         target_piece = self._find_piece_at_position(final_x, final_y)
         if target_piece and self._is_player_piece(target_piece, player_num):
+            logger.debug(f"מנסה לתקוף כלי של אותו שחקן: {piece.piece_id} -> {target_piece.piece_id}")
             self.play_sound("fail")  # מנסים לתקוף כלי שלנו
             return
         
         start_notation = f"{chr(ord('a') + current_x)}{8 - current_y}"
         end_notation = f"{chr(ord('a') + final_x)}{8 - final_y}"
+        
+        if target_piece:
+            logger.info(f"מהלך תקיפה: {piece.piece_id} מ-{start_notation} ל-{end_notation} (תוקף את {target_piece.piece_id})")
+        else:
+            logger.info(f"מהלך רגיל: {piece.piece_id} מ-{start_notation} ל-{end_notation}")
         
         self.user_input_queue.put(Command(
             timestamp=self.game_time_ms(),
@@ -426,10 +473,34 @@ class Game:
             moves_obj = piece._state._moves
         
         if moves_obj and hasattr(moves_obj, 'valid_moves'):
-            for move_dx, move_dy, _ in moves_obj.valid_moves:
+            for move_dx, move_dy, move_type in moves_obj.valid_moves:
                 if dx == move_dx and dy == move_dy:
+                    # בדיקת חסימה בדרך
                     blocking_pos = self._check_path(*current_pos, new_x, new_y, piece.piece_id)
-                    return not (blocking_pos and blocking_pos != (new_x, new_y))
+                    if blocking_pos and blocking_pos != (new_x, new_y):
+                        return False
+                    
+                    # לוגיקה פשוטה: בדוק מה יש במקום היעד
+                    target_piece = self._find_piece_at_position(new_x, new_y)
+                    
+                    # אם זה תנועת תפיסה (capture) - חייב להיות יריב
+                    if move_type == "capture":
+                        return target_piece and not self._is_player_piece(target_piece, player_num)
+                    
+                    # אם זה תנועה רגילה (non_capture או 1st) - המקום חייב להיות ריק
+                    if move_type in ["non_capture", "1st"]:
+                        if target_piece is not None:
+                            return False
+                        # בדיקה מיוחדת למהלך ראשון של חיל
+                        if move_type == "1st":
+                            if piece.piece_id.startswith('PW'):
+                                return current_pos[1] == 6  # חיל לבן במיקום ראשוני
+                            elif piece.piece_id.startswith('PB'):
+                                return current_pos[1] == 1  # חיל שחור במיקום ראשוני
+                        return True
+                    
+                    # תנועה רגילה של כלים אחרים
+                    return not (target_piece and self._is_player_piece(target_piece, player_num))
         return False
 
     def _resolve_collisions(self):
@@ -440,6 +511,7 @@ class Game:
         return not {'KW0', 'KB0'}.issubset(kings)
 
     def _announce_win(self):
+        logger.info("מכריז על ניצחון")
         self.play_sound("win")
         kings = {p.piece_id for p in self.pieces if p.piece_id.startswith('K')}
         
@@ -449,4 +521,5 @@ class Game:
             frozenset(['KW0']): f"{self.player_names['player1']} (WHITE) WINS!"
         }
         winner_text = winner_map.get(frozenset(kings), "GAME OVER!")
+        logger.info(f"תוצאת המשחק: {winner_text}")
         self.winner_tracker.set_winner_text(winner_text)

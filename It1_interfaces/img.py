@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pathlib
+import logging
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 class Img:
     def __init__(self):
@@ -37,7 +40,7 @@ class Img:
         path = str(path)
         self.img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if self.img is None:
-            print(f"Warning: failed to load image {path}")
+            logger.warning(f"Failed to load image {path}")
             return self
 
         # הוסף קטע זה: אם זו תמונת חייל, הקטן לגודל תא הלוח (למשל 80x80)
@@ -63,19 +66,19 @@ class Img:
 
     def draw_on(self, other_img, x, y):
         if self.img is None:
-            print("self.img is None")
+            logger.warning("self.img is None")
             return
         if other_img.img is None:
-            print("other_img.img is None")
+            logger.warning("other_img.img is None")
             return
         if not hasattr(self.img, "shape"):
-            print("self.img has no shape")
+            logger.warning("self.img has no shape")
             return
         if not hasattr(other_img.img, "shape"):
-            print("other_img.img has no shape")
+            logger.warning("other_img.img has no shape")
             return
         if self.img.shape[2] != other_img.img.shape[2]:
-            print("Shape mismatch:", self.img.shape, other_img.img.shape)
+            logger.warning(f"Shape mismatch: {self.img.shape} vs {other_img.img.shape}")
             return
 
         h, w = self.img.shape[:2]

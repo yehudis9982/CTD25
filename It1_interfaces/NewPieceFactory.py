@@ -1,12 +1,16 @@
 import pathlib
 from typing import Dict, Tuple
 import json
+import logging
 from Board import Board
 from GraphicsFactory import GraphicsFactory
 from Moves import Moves
 from PhysicsFactory import PhysicsFactory
 from Piece import Piece
 from NewState import State
+
+# הגדרת לוגגר
+logger = logging.getLogger(__name__)
 
 
 class NewPieceFactory:
@@ -26,7 +30,7 @@ class NewPieceFactory:
         for sub in self.pieces_root.iterdir():
             if sub.is_dir():
                 # "…/PW" etc.
-                print(f"🔧 יוצר תבנית עבור {sub.name}")
+                logger.info("Creating template for piece type: %s", sub.name)
                 self.templates[sub.name] = self._build_state_machine(sub)
 
     def _build_state_machine(self, piece_dir: pathlib.Path) -> State:
@@ -39,7 +43,7 @@ class NewPieceFactory:
         # ── scan every sub-folder inside "states" ────────────────────────────
         states_dir = piece_dir / "states"
         if not states_dir.exists():
-            print(f"⚠️ תיקיית states לא נמצאה: {states_dir}")
+            logger.warning("States directory not found: %s", states_dir)
             # יצור state בסיסי אם אין תיקיית states
             return self._create_default_state(piece_dir)
 
@@ -48,7 +52,7 @@ class NewPieceFactory:
                 continue
 
             name = state_dir.name  # idle / move / jump / …
-            print(f"  📁 עובד על state: {name}")
+            logger.debug("Processing state: %s", name)
 
             # 1. config --------------------------------------------------------
             cfg_path = state_dir / "config.json"
@@ -56,7 +60,7 @@ class NewPieceFactory:
                 try:
                     cfg = json.loads(cfg_path.read_text())
                 except json.JSONDecodeError as e:
-                    print(f"⚠️ שגיאה בקריאת config עבור {name}: {e}")
+                    logger.warning("Error reading config for state %s: %s", name, e)
                     cfg = {}
             else:
                 cfg = {}
@@ -70,7 +74,7 @@ class NewPieceFactory:
             if moves_path.exists():
                 moves = Moves.from_file(moves_path)
             else:
-                print(f"⚠️ moves.txt לא נמצא עבור {name}")
+                logger.warning("moves.txt not found for state: %s", name)
                 moves = Moves(valid_moves=[])  # יצור moves ריק
 
             # 3. graphics & physics -------------------------------------------
@@ -95,7 +99,7 @@ class NewPieceFactory:
             states[name] = state
 
         if not states:
-            print(f"⚠️ לא נמצאו states עבור {piece_dir.name}")
+            logger.warning("No states found for piece type: %s", piece_dir.name)
             return self._create_default_state(piece_dir)
 
         # ── wire transitions מקונפיגורציה ───────────────────────────────────
@@ -111,7 +115,7 @@ class NewPieceFactory:
                     next_state_name = physics_cfg.get("next_state_when_finished")
                     if next_state_name and next_state_name in states:
                         st.set_transition("arrived", states[next_state_name])
-                        print(f"  🔗 {name} --arrived--> {next_state_name}")
+                        logger.debug("State transition: %s --arrived--> %s", name, next_state_name)
                         
                 except json.JSONDecodeError:
                     pass
@@ -154,7 +158,7 @@ class NewPieceFactory:
     def create_piece(self, p_type: str, cell: Tuple[int, int], game_queue=None) -> Piece:
         """יצור כלי חדש מהתבנית"""
         if p_type not in self.templates:
-            print(f"⚠️ תבנית לא נמצאה עבור {p_type}")
+            logger.warning("Template not found for piece type: %s", p_type)
             # נסה ליצור תבנית חדשה
             piece_dir = self.pieces_root / p_type
             if piece_dir.exists():

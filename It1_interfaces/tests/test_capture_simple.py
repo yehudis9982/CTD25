@@ -18,7 +18,7 @@ def test_simple_capture():
     # יצירת לוח ומפעל כלים
     from img import Img
     img = Img()
-    img.read(r"c:\Users\01\Desktop\chess\CTD25\board.png")
+    img.read(pathlib.Path(__file__).parent.parent.parent / "board.png")
     
     board = Board(
         cell_H_pix=103.5,
@@ -29,7 +29,7 @@ def test_simple_capture():
         H_cells=8,
         img=img
     )
-    pieces_root = pathlib.Path(r"c:\Users\01\Desktop\chess\CTD25\pieces")
+    pieces_root = pathlib.Path(__file__).parent.parent.parent / "pieces"
     factory = PieceFactory(board, pieces_root)
     
     # צור משחק

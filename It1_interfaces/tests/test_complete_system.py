@@ -28,7 +28,7 @@ def test_new_system():
             img=img
         )
         
-        pieces_root = pathlib.Path(r"C:\Users\01\Desktop\chess (3)\chess\CTD25\pieces")
+        pieces_root = pathlib.Path(__file__).parent.parent.parent / "pieces"
         factory = NewPieceFactory(board, pieces_root)
         
         print(f"✅ יצר NewPieceFactory עם {len(factory.templates)} תבניות")
