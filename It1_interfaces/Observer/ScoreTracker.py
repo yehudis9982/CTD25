@@ -1,5 +1,6 @@
 import logging
 from .Subscriber import Subscriber
+from .EventType import EventType
 
 logger = logging.getLogger(__name__)
 class ScoreTracker(Subscriber):
@@ -14,7 +15,7 @@ class ScoreTracker(Subscriber):
             'K': 0  # King is invaluable, but we can track captures
         }
     def update(self, event):
-        if(event.type != "piece_capture"):
+        if event.type != EventType.PIECE_CAPTURE:
             return
         piece_type = event.data.get('piece_type', '')
         captured_by = event.data.get('captured_by', '')

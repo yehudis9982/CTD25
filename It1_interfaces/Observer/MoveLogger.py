@@ -1,12 +1,13 @@
 from .MoveMadeEvent import MoveMadeEvent
 from .Subscriber import Subscriber
+from .EventType import EventType
 
 class MoveLogger(Subscriber):
     def __init__(self):
         self.moves = {"white": [], "black": []}
    
     def update(self, event):
-        if isinstance(event, MoveMadeEvent):
+        if event.type == EventType.MOVE_MADE:
             move_data = {
                 "time": event.data.get("timestamp").strftime("%H:%M:%S") if event.data.get("timestamp") else "unknown",
                 "move": f"{event.data['piece_type']} {event.data['start_position']} -> {event.data['end_position']}"

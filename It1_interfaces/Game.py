@@ -10,6 +10,8 @@ from Observer.PieceCaptureEvent import PieceCaptureEvent
 from Observer.MoveLogger import MoveLogger
 from Observer.MoveMadeEvent import MoveMadeEvent
 from Observer.WinnerTracker import WinnerTracker
+from Observer.GameOverEvent import GameOverEvent
+from Observer.EventType import EventType
 
 # הגדרת לוגגר פשוטה
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -250,34 +252,62 @@ class Game:
             
             winner_text = self.winner_tracker.get_winner_text()
             if winner_text:
-                self._draw_winner_text_on_board(display_board, winner_text)
+                winner_enum = self.winner_tracker.get_winner()
+                logger.info(f"Winner enum for image: {winner_enum}")
+                self._draw_winner_image_on_board(display_board, winner_text, winner_enum)
             
             display_board.img.display_with_background("Chess Game", **info)
 
-    def _draw_winner_text_on_board(self, board, winner_text):
+    def _draw_winner_image_on_board(self, board, winner_text, winner_enum):
         if not (hasattr(board, 'img') and hasattr(board.img, 'img')):
             return
-            
         img = board.img.img
         h, w = img.shape[:2]
-        overlay = img.copy()
         center_x, center_y = w // 2, h // 2
-        
+
+        # קבע איזו תמונה להציג לפי הערך Enum
+        winner_image_path = None
+        winner_value = getattr(winner_enum, 'value', None)
+        if winner_value == "game_over_black":
+            winner_image_path = pathlib.Path(__file__).parent.parent / "Photos" / "blackWin.png"
+        elif winner_value == "game_over_white":
+            winner_image_path = pathlib.Path(__file__).parent.parent / "Photos" / "whiteWin.png"
+
+        if winner_image_path and winner_image_path.exists():
+            try:
+                winner_img = cv2.imread(str(winner_image_path), cv2.IMREAD_UNCHANGED)
+                if winner_img is not None:
+                    target_width = min(400, w // 2)
+                    target_height = min(300, h // 2)
+                    winner_img_resized = cv2.resize(winner_img, (target_width, target_height))
+                    # טיפול בערוצים: המרה ל-RGBA אם צריך
+                    if img.shape[2] == 4 and winner_img_resized.shape[2] == 3:
+                        winner_img_resized = cv2.cvtColor(winner_img_resized, cv2.COLOR_BGR2BGRA)
+                    elif img.shape[2] == 3 and winner_img_resized.shape[2] == 4:
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                    start_x = center_x - target_width // 2
+                    start_y = center_y - target_height // 2
+                    end_x = start_x + target_width
+                    end_y = start_y + target_height
+                    start_x = max(0, start_x)
+                    start_y = max(0, start_y)
+                    end_x = min(w, end_x)
+                    end_y = min(h, end_y)
+                    img[start_y:end_y, start_x:end_x] = winner_img_resized[:end_y-start_y, :end_x-start_x]
+                    return
+            except Exception as e:
+                logger.error(f"שגיאה בטעינת תמונת הניצחון: {e}")
+
+        # אם לא הצלחנו להציג תמונה, נחזור לטקסט פשוט
+        overlay = img.copy()
         cv2.rectangle(overlay, (center_x - 300, center_y - 75), (center_x + 300, center_y + 75), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
-        
         font = cv2.FONT_HERSHEY_SIMPLEX
-        text_size = cv2.getTextSize(winner_text, font, 1.5, 3)[0]
+        simple_text = "WINNER!" if winner_enum in (EventType.GAME_OVER_BLACK, EventType.GAME_OVER_WHITE) else "GAME OVER!"
+        text_size = cv2.getTextSize(simple_text, font, 1.5, 3)[0]
         text_x, text_y = center_x - text_size[0] // 2, center_y + text_size[1] // 2
-        
-        cv2.putText(img, winner_text, (text_x + 2, text_y + 2), font, 1.5, (0, 0, 0), 5)
-        cv2.putText(img, winner_text, (text_x, text_y), font, 1.5, (0, 255, 255), 3)
-        
-        sub_text = "Game continues - Press ESC to exit"
-        sub_size = cv2.getTextSize(sub_text, font, 0.8, 2)[0]
-        sub_x = center_x - sub_size[0] // 2
-        cv2.putText(img, sub_text, (sub_x + 1, text_y + 51), font, 0.8, (0, 0, 0), 3)
-        cv2.putText(img, sub_text, (sub_x, text_y + 50), font, 0.8, (255, 255, 255), 2)
+        cv2.putText(img, simple_text, (text_x + 2, text_y + 2), font, 1.5, (0, 0, 0), 5)
+        cv2.putText(img, simple_text, (text_x, text_y), font, 1.5, (0, 255, 255), 3)
 
     def _show(self) -> bool:
         cv2.setWindowProperty("Chess Game", cv2.WND_PROP_TOPMOST, 1)
@@ -515,11 +545,34 @@ class Game:
         self.play_sound("win")
         kings = {p.piece_id for p in self.pieces if p.piece_id.startswith('K')}
         
+        # קבע מי ניצח - המנצח הוא זה שהמלך שלו עדיין קיים
+        winner = None
+        if 'KB0' in kings and 'KW0' not in kings:
+            winner = "black"  # המלך השחור קיים והלבן לא - שחור ניצח
+        elif 'KW0' in kings and 'KB0' not in kings:
+            winner = "white"  # המלך הלבן קיים והשחור לא - לבן ניצח
+        
         # שימוש בשמות האמיתיים של השחקנים
         winner_map = {
-            frozenset(['KB0']): f"{self.player_names['player2']} (BLACK) WINS!",
-            frozenset(['KW0']): f"{self.player_names['player1']} (WHITE) WINS!"
+            "black": f"🎉 {self.player_names['player2']} (שחור) ניצח! 🎉",
+            "white": f"🎉 {self.player_names['player1']} (לבן) ניצח! 🎉"
         }
-        winner_text = winner_map.get(frozenset(kings), "GAME OVER!")
+        winner_text = winner_map.get(winner, "🎮 המשחק נגמר! 🎮")
         logger.info(f"תוצאת המשחק: {winner_text}")
-        self.winner_tracker.set_winner_text(winner_text)
+        
+        # שלח GameOverEvent עם winner_text
+        game_over_event = GameOverEvent(winner=winner, reason="king_captured")
+        game_over_event.data["winner_text"] = winner_text
+        self.publisher.notify(game_over_event)
+        
+        # הצג הודעת ניצחון למשך זמן קצוב ואז סיים את המשחק
+        import threading
+        import time
+        
+        def end_game_after_delay():
+            time.sleep(3)  # המתן 3 שניות
+            logger.info("המשחק מסתיים אחרי הודעת הניצחון")
+            self.game_over = True
+        
+        # הפעל timer ברקע
+        threading.Thread(target=end_game_after_delay, daemon=True).start()

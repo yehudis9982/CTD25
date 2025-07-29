@@ -5,6 +5,11 @@ from Game import Game
 from PieceFactory import PieceFactory  # השתמש במפעל החדש
 import pathlib
 import cv2
+import time
+from Observer.Publisher import Publisher
+from Observer.StartTracker import StartTracker
+from Observer.GameStartEvent import GameStartEvent
+from Observer.EventType import EventType
 
 # הגדרת לוגגר
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
@@ -13,6 +18,15 @@ logger = logging.getLogger(__name__)
 logger.info("Starting chess game with New State Pattern")
 logger.info("מתחיל משחק שחמט עם State + קונפיגורציות")
 
+# צור publisher ו-start tracker
+publisher = Publisher()
+start_tracker = StartTracker()
+publisher.subscribe(start_tracker)
+
+# שלח event שהמשחק מתחיל
+logger.info("Publishing game start event")
+publisher.notify(GameStartEvent())
+
 # טען את התמונה
 logger.info("Loading board image")
 img = Img()
@@ -20,6 +34,7 @@ img.read(pathlib.Path(__file__).parent.parent / "board.png")
 logger.info("Image loaded successfully: %s", img.img is not None)
 if img.img is None:
     logger.error("Board image failed to load!")
+    start_tracker.close_logo_screen()
     raise RuntimeError("Board image failed to load!")
 
 # צור את הלוח עם התמונה
@@ -35,6 +50,10 @@ board = Board(
 
 pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
 factory = PieceFactory(board, pieces_root)  # השתמש במפעל החדש
+
+# עדכן את הלוגו במהלך הטעינה
+if start_tracker.logo_displayed:
+    cv2.waitKey(100)  # תן זמן להציג את הלוגו
 
 start_positions = [
     # כלים שחורים בחלק העליון של הלוח (שורות 0-1)
@@ -74,6 +93,9 @@ for p_type, cell in start_positions:
 
 # עדכן את המשחק עם הכלים
 game.pieces = pieces
+
+# סגור את מסך הלוגו לפני תחילת המשחק
+start_tracker.finish_loading()
 
 logger.info("Starting game loop")
 game.run()
