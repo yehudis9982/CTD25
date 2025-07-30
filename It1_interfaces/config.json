@@ -1,0 +1,39 @@
+{
+    "server": {
+        "host": "localhost",
+        "port": 8888,
+        "max_clients": 2
+    },
+    "client": {
+        "auto_connect": true,
+        "reconnect_attempts": 3,
+        "display": {
+            "window_title": "Chess Game Client",
+            "fps": 60,
+            "background_scale": 1.3,
+            "max_window_size": [1200, 900]
+        }
+    },
+    "game": {
+        "board": {
+            "cell_height_pixels": 103.5,
+            "cell_width_pixels": 102.75,
+            "cells_width": 8,
+            "cells_height": 8
+        },
+        "pieces": {
+            "animation_fps": 6.0,
+            "sprite_size": [80, 80]
+        }
+    },
+    "sounds": {
+        "enabled": true,
+        "volume": 0.7,
+        "files": {
+            "move": "move.mp3",
+            "capture": "keel.mp3",
+            "fail": "fail.mp3",
+            "win": "win.mp3"
+        }
+    }
+}
