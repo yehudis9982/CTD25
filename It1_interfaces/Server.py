@@ -73,6 +73,15 @@ class ChessServer:
             pieces.append(piece)
         
         self.game = Game(pieces, board)
+        
+        # ודא שהכלים מחוברים לתור הנכון
+        for piece in self.game.pieces:
+            if hasattr(piece._state, '_game_queue'):
+                piece._state._game_queue = self.game.user_input_queue
+            if hasattr(piece._state, 'physics'):
+                piece._state.physics.user_input_queue = self.game.user_input_queue
+            elif hasattr(piece._state, '_physics'):
+                piece._state._physics.user_input_queue = self.game.user_input_queue
         logger.info(f"השרת אותחל עם {len(pieces)} כלים")
     
     def start_server(self):
@@ -170,15 +179,20 @@ class ChessServer:
         
         while not self.game.game_over:
             now = self.game.game_time_ms()
-            
             for p in self.game.pieces:
                 p.update(now)
-            
+
             while not self.game.user_input_queue.empty():
                 cmd = self.game.user_input_queue.get()
                 self.game._process_input(cmd)
                 if self.game.game_over:
                     break
+
+            self.game._resolve_collisions()
+            
+            if self.game._is_win() and not self.game.winner_announced:
+                self.game._announce_win()
+                self.game.winner_announced = True
             
             self._broadcast_game_state()
             time.sleep(1/60.0)
@@ -209,8 +223,9 @@ class ChessServer:
         except:
             pass
     
+
     def _get_game_state(self) -> dict:
-        """קבל מצב המשחק - רק מיקומים"""
+        """קבל מצב המשחק מלא"""
         pieces_state = []
         
         for piece in self.game.pieces:
@@ -242,7 +257,8 @@ class ChessServer:
             },
             'game_over': self.game.game_over,
             'winner': self.game.winner_tracker.get_winner_text() if self.game.winner_announced else None,
-            'player_names': self.game.player_names
+            'player_names': self.game.player_names,
+            'timestamp': self.game.game_time_ms()
         }
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from .EventType import EventType
 class MoveLogger(Subscriber):
     def __init__(self):
         self.moves = {"white": [], "black": []}
+        self._moves = {"white": [], "black": []}  # תמיכה בשני השמות
    
     def update(self, event):
         if event.type == EventType.MOVE_MADE:

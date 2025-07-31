@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 class ScoreTracker(Subscriber):
     def __init__(self):
         self.score = {"white": 0, "black": 0}
+        self._scores = {"white": 0, "black": 0}  # תמיכה בשני השמות
         self.piece_values = {
             'P': 1,
             'N': 3,

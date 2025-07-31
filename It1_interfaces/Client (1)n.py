@@ -11,25 +11,24 @@ from img import Img
 from Board import Board
 from Game import Game
 from PieceFactory import PieceFactory
-import pathlib
+from Command import Command
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ChessClient:
-    def __init__(self, host='localhost', port=8888):
+    def __init__(self, host='217.194.157.58', port=8888):
         self.host = host
         self.port = port
         self.socket = None
         self.connected = False
-        self.game = None  # משתמש במחלקת Game המקורית
+        self.game = None
         self.game_over = False
         
         self._init_game()
     
     def _init_game(self):
         """אתחול המשחק המקורי בלקוח"""
-        # טעינת לוח
         img = Img()
         img.read(pathlib.Path(__file__).parent.parent / "board.png")
         
@@ -47,7 +46,6 @@ class ChessClient:
             img=img
         )
         
-        # יצירת כלים
         pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
         factory = PieceFactory(board, pieces_root)
         
@@ -81,8 +79,11 @@ class ChessClient:
                 
             pieces.append(piece)
         
-        # יצירת משחק מלא
         self.game = Game(pieces, board)
+        
+        # הוסף מהלכים דמו לבדיקה
+        self._add_demo_moves()
+        
         logger.info("לקוח אותחל עם משחק מלא")
     
     def connect_to_server(self):
@@ -127,41 +128,20 @@ class ChessClient:
         if msg_type == 'game_state':
             game_data = message.get('data')
             if game_data:
-                # עדכון מצב המשחק מהשרת
                 self._sync_game_state(game_data)
+                
+        elif msg_type == 'moves_update':
+            moves_data = message.get('data')
+            if moves_data:
+                self._sync_moves_and_score(moves_data)
                 
         elif msg_type == 'error':
             logger.warning(f"שגיאה מהשרת: {message.get('message')}")
     
     def _sync_game_state(self, server_state):
         """סנכרון מצב המשחק עם השרת"""
-        from Observer.PieceCaptureEvent import PieceCaptureEvent
-        from Observer.MoveMadeEvent import MoveMadeEvent
-        from datetime import datetime
-        
-        # סנכרון כלים - הוספה/הסרה/שינוי מיקום
         server_pieces = {p['id']: p for p in server_state.get('pieces', [])}
-        current_pieces = {p.piece_id: p for p in self.game.pieces}
         
-        # הסר כלים שנתפסו ושלח אירוע תפיסה
-        for piece_id in list(current_pieces.keys()):
-            if piece_id not in server_pieces:
-                piece = current_pieces[piece_id]
-                logger.info(f"מסיר כלי שנתפס: {piece_id}")
-                self.game.pieces.remove(piece)
-                
-                # שלח אירוע תפיסה דרך Observer Pattern
-                piece_type = piece_id[0]
-                captured_by = "white" if 'B' in piece_id else "black"
-                self.game.publisher.notify(PieceCaptureEvent(piece_type, captured_by))
-        
-        # הוסף כלים חדשים (מלכות מקידום)
-        for piece_id, server_piece in server_pieces.items():
-            if piece_id not in current_pieces:
-                logger.info(f"מוסיף כלי חדש: {piece_id}")
-                self._create_new_piece(server_piece)
-        
-        # עדכן מיקומי כלים קיימים ושלח אירועי מהלך
         for piece in self.game.pieces:
             if piece.piece_id in server_pieces:
                 server_piece = server_pieces[piece.piece_id]
@@ -170,21 +150,6 @@ class ChessClient:
                 
                 if current_pos != server_pos:
                     logger.info(f"מזיז כלי {piece.piece_id} מ-{current_pos} ל-{server_pos}")
-                    
-                    # שלח אירוע מהלך דרך Observer Pattern
-                    start_notation = f"{chr(ord('a') + current_pos[0])}{8 - current_pos[1]}"
-                    end_notation = f"{chr(ord('a') + server_pos[0])}{8 - server_pos[1]}"
-                    player_color = "white" if 'W' in piece.piece_id else "black"
-                    
-                    self.game.publisher.notify(MoveMadeEvent(
-                        piece_type=piece.piece_id[0],
-                        start_position=start_notation,
-                        end_position=end_notation,
-                        player_color=player_color,
-                        timestamp=datetime.now()
-                    ))
-                    
-                    from Command import Command
                     cmd = Command(
                         timestamp=self.game.game_time_ms(),
                         piece_id=piece.piece_id,
@@ -194,7 +159,6 @@ class ChessClient:
                     )
                     self.game.user_input_queue.put(cmd)
         
-        # עדכון סמנים ובחירות
         cursors = server_state.get('cursors', {})
         self.game.cursor_pos_player1 = cursors.get('player1', [0, 7])
         self.game.cursor_pos_player2 = cursors.get('player2', [0, 0])
@@ -202,10 +166,22 @@ class ChessClient:
         selected = server_state.get('selected', {})
         self.game.selected_piece_player1 = self._find_piece_by_position(selected.get('player1'))
         self.game.selected_piece_player2 = self._find_piece_by_position(selected.get('player2'))
+    
+    def _sync_moves_and_score(self, moves_data):
+        """סנכרון טבלת מהלכים וניקוד מהשרת"""
+        logger.info(f"מעדכן מהלכים וניקוד מהשרת: {moves_data}")
         
-        # עדכון מצב משחק
-        self.game.game_over = server_state.get('game_over', False)
-        self.game.winner_announced = bool(server_state.get('winner'))
+        if 'moves' in moves_data:
+            moves = moves_data['moves']
+            self.game.move_logger.moves['white'] = moves.get('white', [])
+            self.game.move_logger.moves['black'] = moves.get('black', [])
+            logger.info(f"עודכנו מהלכים: white={len(self.game.move_logger.moves['white'])}, black={len(self.game.move_logger.moves['black'])}")
+        
+        if 'scores' in moves_data:
+            scores = moves_data['scores']
+            self.game.score_tracker.score['white'] = scores.get('white', 0)
+            self.game.score_tracker.score['black'] = scores.get('black', 0)
+            logger.info(f"עודכן ניקוד: white={self.game.score_tracker.score['white']}, black={self.game.score_tracker.score['black']}")
     
     def _find_piece_by_position(self, position):
         """מצא כלי לפי מיקום"""
@@ -215,26 +191,6 @@ class ChessClient:
             if self.game._get_piece_position(piece) == tuple(position):
                 return piece
         return None
-    
-    def _create_new_piece(self, piece_data):
-        """יצירת כלי חדש (למלכות מקידום)"""
-        pieces_root = pathlib.Path(__file__).parent.parent / "pieces"
-        factory = PieceFactory(self.game.board, pieces_root)
-        
-        piece_type = piece_data['type']
-        position = tuple(piece_data['position'])
-        piece_id = piece_data['id']
-        
-        new_piece = factory.create_piece(piece_type, position, self.game.user_input_queue)
-        new_piece.piece_id = piece_id
-        
-        if hasattr(new_piece._state, 'physics'):
-            new_piece._state.physics.piece_id = piece_id
-        elif hasattr(new_piece._state, '_physics'):
-            new_piece._state._physics.piece_id = piece_id
-        
-        self.game.pieces.append(new_piece)
-        logger.info(f"נוצר כלי חדש: {piece_id} במיקום {position}")
     
     def send_keyboard_input(self, key):
         """שלח קלט מקלדת לשרת"""
@@ -253,33 +209,35 @@ class ChessClient:
             logger.error(f"שגיאה בשליחת קלט: {e}")
             return False
     
-    def run(self):
+    def run(self, standalone=False):
         """הפעלת הלקוח"""
-        if not self.connect_to_server():
-            return
+        if not standalone and not self.connect_to_server():
+            logger.info("לא ניתן להתחבר לשרת, עובר למצב עצמאי")
+            standalone = True
         
         logger.info("הלקוח מתחיל לרוץ")
-        start_ms = self.game.game_time_ms()
+        if standalone:
+            logger.info("מצב עצמאי - טבלת מהלכים וניקוד מוצגים")
+            logger.info("שחקן 1 (לבן): מקשי מספרים - 8,2,4,6 לתנועה, 5/0/Enter לבחירה")
+            logger.info("שחקן 2 (שחור): WASD לתנועה, רווח לבחירה")
+            logger.info("לחץ ESC או Q ליציאה")
         
+        start_ms = self.game.game_time_ms()
         for p in self.game.pieces:
             p.reset(start_ms)
         
-        while self.connected and not self.game.game_over:
+        while (self.connected or standalone) and not self.game.game_over:
             now = self.game.game_time_ms()
             
-            # עדכון כלים (אנימציות ופיזיקה)
             for p in self.game.pieces:
                 p.update(now)
             
-            # עיבוד פקודות
             while not self.game.user_input_queue.empty():
                 cmd = self.game.user_input_queue.get()
                 self.game._process_input(cmd)
             
-            # ציור המשחק
-            self.game._draw()
+            self._draw_game()
             
-            # טיפול בקלט
             if not self._handle_input():
                 break
                 
@@ -303,10 +261,68 @@ class ChessClient:
         if key in [27, ord('q')]:
             return False
         
-        # שלח קלט לשרת
-        self.send_keyboard_input(key)
+        if self.connected:
+            self.send_keyboard_input(key)
+        else:
+            self.game._handle_keyboard_input(key)
         
         return True
+    
+    def _draw_game(self):
+        """ציור המשחק עם כל המידע הנדרש"""
+        display_board = self.game.clone_board()
+        now = self.game.game_time_ms()
+        for p in self.game.pieces:
+            p.draw_on_board(display_board, now)
+        
+        if hasattr(display_board, "img"):
+            white_moves = self.game.move_logger.get_moves("white")
+            black_moves = self.game.move_logger.get_moves("black")
+            
+            info = {
+                'cursors_info': {
+                    'player1_cursor': self.game.cursor_pos_player1,
+                    'player2_cursor': self.game.cursor_pos_player2,
+                    'player1_selected': self.game._get_piece_position(self.game.selected_piece_player1),
+                    'player2_selected': self.game._get_piece_position(self.game.selected_piece_player2)
+                },
+                'score_info': {
+                    'white_score': self.game.score_tracker.get_score("white"),
+                    'black_score': self.game.score_tracker.get_score("black")
+                },
+                'moves_info': {
+                    'white_moves': white_moves,
+                    'black_moves': black_moves
+                },
+                'player_names': self.game.player_names
+            }
+            
+            winner_text = self.game.winner_tracker.get_winner_text()
+            if winner_text:
+                winner_enum = self.game.winner_tracker.get_winner()
+                self.game._draw_winner_image_on_board(display_board, winner_text, winner_enum)
+            
+            display_board.img.display_with_background("Chess Game", **info)
+    
+    def _add_demo_moves(self):
+        """הוסף מהלכים דמו לבדיקה"""
+        demo_moves = [
+            {"move": "P e2 -> e4", "time": "14:30:15"},
+            {"move": "N g1 -> f3", "time": "14:30:45"},
+            {"move": "B f1 -> c4", "time": "14:31:12"}
+        ]
+        
+        demo_black_moves = [
+            {"move": "P e7 -> e5", "time": "14:30:30"},
+            {"move": "N b8 -> c6", "time": "14:31:00"}
+        ]
+        
+        self.game.move_logger.moves['white'] = demo_moves
+        self.game.move_logger.moves['black'] = demo_black_moves
+        self.game.score_tracker.score['white'] = 3
+        self.game.score_tracker.score['black'] = 1
+        
+        logger.info(f"הוספו מהלכים דמו: white={len(demo_moves)}, black={len(demo_black_moves)}")
     
     def disconnect(self):
         """התנתקות מהשרת"""
@@ -315,9 +331,13 @@ class ChessClient:
             self.socket.close()
 
 if __name__ == "__main__":
+    import sys
+    
+    standalone_mode = '--standalone' in sys.argv or '-s' in sys.argv
+    
     client = ChessClient()
     try:
-        client.run()
+        client.run(standalone=standalone_mode)
     except KeyboardInterrupt:
         logger.info("הלקוח נסגר על ידי המשתמש")
     finally:
